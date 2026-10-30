@@ -7,6 +7,7 @@ import {
   Suspense,
   createContext,
   isValidElement,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -176,6 +177,23 @@ function OperatorShellSidebar({
   );
 }
 
+/** Holds `host` in place; moving it between outlets keeps its React content mounted. */
+function PanelHostOutlet({
+  host,
+  className,
+}: {
+  host: HTMLElement | null;
+  className?: string;
+}) {
+  const attach = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element && host) element.appendChild(host);
+    },
+    [host],
+  );
+  return <div ref={attach} className={className} />;
+}
+
 const SidebarRenderContext = createContext<SidebarRenderProps | null>(null);
 const RightPanelWideContext = createContext<
   ((wide: boolean) => void) | null
@@ -232,6 +250,24 @@ function ShellFrame({
   const hasPdfPanel = isPdfOpen && !!fileUrl;
   const hasEntityPanel = !!entityPreview;
   const hasRightPanel = hasPageRightPanel;
+  // Too narrow for the list, detail and PDF side by side: the PDF keeps its
+  // column and the detail panel floats over the page.
+  const appIsWide = useAppMinWidth(1536);
+  const rightPanelOverlay =
+    hasRightPanel && hasPdfPanel && appIsDesktop && !appIsWide;
+  // The right panel renders into one node that moves between its column and
+  // the overlay, so switching keeps its state.
+  const [rightPanelHost] = useState(() => {
+    if (typeof document === "undefined") return null;
+    const host = document.createElement("div");
+    host.className = "flex h-full min-h-0 w-full min-w-0";
+    return host;
+  });
+  useLayoutEffect(() => {
+    if (!rightPanelHost) return;
+    setRightPanelTarget(rightPanelHost);
+    return () => setRightPanelTarget(null);
+  }, [rightPanelHost, setRightPanelTarget]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMobileOpen(false));
@@ -249,7 +285,7 @@ function ShellFrame({
   const panelLayout = (
     <AppShellPanelLayout
       main={
-        <>
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <AppTopBar
             tabs={
               hasPageTabs ? <div ref={setPageTabsTarget} /> : undefined
@@ -289,17 +325,23 @@ function ShellFrame({
               </main>
             </div>
           </div>
-        </>
+          {rightPanelOverlay ? (
+            <PanelHostOutlet
+              host={rightPanelHost}
+              className="absolute inset-y-0 right-0 z-30 flex w-[min(40rem,100%)] shadow-[-16px_0_40px_-24px_rgba(0,0,0,0.35)]"
+            />
+          ) : null}
+        </div>
       }
       entityPanel={hasEntityPanel ? <EntityPreviewPanel /> : undefined}
       rightPanel={
-        hasRightPanel ? (
+        hasRightPanel && !rightPanelOverlay ? (
           // Safari can scroll the resizable panel when a nested popup receives
           // focus. Clip at its positioned wrapper without creating a scrollport.
           // Below lg the panel is a drawer over the page, so it takes no width.
           <div className="relative flex h-full min-h-0 w-full min-w-0 max-lg:w-0 max-lg:flex-none lg:overflow-clip">
-            <div
-              ref={setRightPanelTarget}
+            <PanelHostOutlet
+              host={rightPanelHost}
               className="flex h-full min-h-0 w-full min-w-0"
             />
           </div>
