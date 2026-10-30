@@ -58,6 +58,8 @@ function SignupForm() {
     token ? { token } : "skip",
   );
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
+  // An operator impersonating the client browses its applications; they never start one.
+  const isOperator = viewer?.accountKind === "operator";
   const org = useQuery(
     api.orgs.viewerOrg,
     isAuthenticated && viewer?.emailVerificationTime && !viewer.intakeRestricted
@@ -254,6 +256,7 @@ function SignupForm() {
     if (
       autoStart.current ||
       !isAuthenticated ||
+      isOperator ||
       token ||
       handoffTransition ||
       !orgReady ||
@@ -268,7 +271,7 @@ function SignupForm() {
     autoStart.current = true;
     void newRequest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, token, handoffTransition, orgReady, recoverableIds, drafts, submitted]);
+  }, [isAuthenticated, isOperator, token, handoffTransition, orgReady, recoverableIds, drafts, submitted]);
   async function verify() {
     setBusy(true);
     setError("");
@@ -290,14 +293,18 @@ function SignupForm() {
       footer={
         isAuthenticated && !token && !handoffTransition ? (
           <>
-            <PillButton
-              size="large"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void newRequest()}
-            >
-              New application
-            </PillButton>
+            {isOperator ? (
+              <span />
+            ) : (
+              <PillButton
+                size="large"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void newRequest()}
+              >
+                New application
+              </PillButton>
+            )}
             <PillButton
               size="large"
               disabled={
@@ -402,7 +409,7 @@ function SignupForm() {
               ...request,
               submitted: false,
             })),
-            ...recoverable
+            ...(isOperator ? [] : recoverable)
               .filter(
                 (id) =>
                   !drafts?.some((d) => d.id === id) &&
@@ -420,7 +427,7 @@ function SignupForm() {
               key={request.id}
               type="button"
               aria-pressed={selectedRequest === request.id}
-              aria-label={`${request.submitted ? "View" : "Resume"} ${request.coverage || "insurance request"} for ${request.insuredName || "business not provided"}${request.effectiveDate ? ` starting ${dayjs(request.effectiveDate).format("MMMM D, YYYY")}` : ""}`}
+              aria-label={`${request.submitted || isOperator ? "View" : "Resume"} ${request.coverage || "insurance request"} for ${request.insuredName || "business not provided"}${request.effectiveDate ? ` starting ${dayjs(request.effectiveDate).format("MMMM D, YYYY")}` : ""}`}
               onClick={() => setSelectedRequest(request.id)}
               className="block w-full overflow-hidden rounded-xl border-0 bg-transparent p-0"
             >
@@ -466,6 +473,11 @@ function SignupForm() {
               </Card>
             </ActionSurfaceButton>
           ))}
+          {isOperator && !submitted?.length && !drafts?.length && (
+            <p className={`text-muted-foreground ${typeStyle("body.root")}`}>
+              This client has no applications yet.
+            </p>
+          )}
         </div>
       ) : (
         <form

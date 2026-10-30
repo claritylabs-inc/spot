@@ -55,7 +55,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getSessionUserId } from "./lib/sessionIdentity";
 import { getOrgAccess } from "./lib/access";
 import { normalizeUserPhone, findUserByNormalizedPhone } from "./lib/userPhone";
-import { isBootstrapOperatorEmail } from "./lib/operatorIdentity";
+import {
+  getActiveOperatorImpersonation,
+  isBootstrapOperatorEmail,
+} from "./lib/operatorIdentity";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
 import {
   completedIntakeSteps,
@@ -132,6 +135,54 @@ export async function ownedRequest(
   if (request.clientOrgId && !user.intakeRestricted)
     await getOrgAccess(ctx, request.clientOrgId);
   return { user, request };
+}
+/** The client an operator is impersonating; null for everyone else. */
+async function impersonatedClient(ctx: QueryCtx) {
+  // Operator sessions count only after their second factor.
+  if (!(await getSessionUserId(ctx))) return null;
+  return (await getActiveOperatorImpersonation(ctx))?.targetOrg ?? null;
+}
+/** The impersonated client's applications, newest first, whoever owns them. */
+async function impersonatedApplications(ctx: QueryCtx) {
+  const org = await impersonatedClient(ctx);
+  if (!org) return null;
+  const rows = await ctx.db
+    .query("procurementRequests")
+    .withIndex("organization", (q) => q.eq("clientOrgId", org._id))
+    .order("desc")
+    .take(100);
+  return {
+    org,
+    rows: rows.filter((r) => !r.deletedAt && r.intakeSchemaVersion !== undefined),
+  };
+}
+function draftSummary(r: Doc<"procurementRequests">, fallbackName: string) {
+  return {
+    id: r._id,
+    title: r.intakeAnswers?.dba || r.intakeAnswers?.legalName || r.title,
+    coverage:
+      r.intakeAnswers?.intakeGoal === "savings"
+        ? "Policy savings review"
+        : r.intakeAnswers?.coverage || "",
+    effectiveDate: r.intakeAnswers?.effectiveDate || "",
+    insuredName:
+      r.intakeAnswers?.legalName || r.intakeAnswers?.name || fallbackName,
+    updatedAt: r.updatedAt,
+  };
+}
+function submittedSummary(r: Doc<"procurementRequests">, orgName: string) {
+  return {
+    id: r._id,
+    title: r.intakeAnswers?.dba || r.intakeAnswers?.legalName || r.title,
+    coverage:
+      r.intakeAnswers?.intakeGoal === "savings"
+        ? "Policy savings review"
+        : r.intakeAnswers?.coverage || "",
+    effectiveDate:
+      r.intakeAnswers?.effectiveDate || r.targetEffectiveDate || "",
+    insuredName: r.intakeAnswers?.legalName || orgName,
+    status: r.status,
+  };
 }
 /** Stands in until the applicant names their company; syncDraftClient replaces it. */
 function placeholderCompanyName(user: Doc<"users"> | null) {
@@ -527,118 +578,151 @@ export const start = mutation({
     return newDraft(ctx, user._id, answers, args.orgId, companyDetails);
   },
 });
+/** Everything an applicant sees of their application; callers authorize the request first. */
+async function applicationView(
+  ctx: QueryCtx,
+  request: Doc<"procurementRequests">,
+  verified: boolean,
+) {
+  const files = await ctx.db
+    .query("requestIntakeFiles")
+    .withIndex("request", (q) => q.eq("requestId", request._id))
+    .take(30);
+  const details =
+    request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
+  const premiumDraftContentHash = await hashIntakeToken(submissionContent(request.intakeAnswers ?? {}, activeIntakeDetails(details,request.intakeAnswers?.intakeGoal), files.map(file=>String(file._id))));
+  const hasTypedScope = details.coverages.some(
+    (line) =>
+      line.properties !== undefined ||
+      line.vehicles !== undefined ||
+      line.scopeDescription !== undefined,
+  );
+  const hasTypedAdditional = details.coverages.some(
+    (line) => line.additionalCoverages !== undefined,
+  );
+  return {
+    requestId: request._id,
+    vehicleRelevance: request.intakeVehicleRelevance,
+    answers: request.intakeAnswers ?? {},
+    followupBatches: {
+      acord: {
+        status: "ready" as const, token: BAKED_COVERAGE_QUESTIONS_VERSION,
+        contextHash: BAKED_COVERAGE_QUESTIONS_VERSION, startedAt: 0, current: true, enriching: false, preloaded: false,
+        questions: bakedCoverageQuestions({ answers: request.intakeAnswers ?? {}, details }),
+      },
+      additional: request.intakeFollowups?.additional ? {...request.intakeFollowups.additional, current: request.intakeFollowups.additional.contextHash === await followupContextHash(ctx, request, "additional"), questions: request.intakeFollowups.additional.status === "ready" ? request.intakeFollowups.additional.questions : []} : undefined,
+    },
+    details: {
+      ...details,
+      scopeNote:
+        details.scopeNote ??
+        (hasTypedScope ? "" : (request.intakeAnswers?.coverageScope ?? "")),
+      additionalNote:
+        details.additionalNote ??
+        (hasTypedAdditional
+          ? ""
+          : (request.intakeAnswers?.separateQuotes ?? "")),
+    },
+    step:
+      request.intakeSchemaVersion === 1
+        ? [1, 6, 10, 20, 28][request.intakeStep ?? 0]
+        : (request.intakeStep ?? 0),
+    revision: request.intakeRevision ?? 0,
+    submitted: !!request.intakeSubmittedAt,
+    submissionBaseline: request.intakeSubmittedAt
+      ? (request.intakeSubmittedApplication ??
+        request.intakeSubmissionBaseline ?? {
+          answers: request.intakeSnapshot ?? {},
+          details:
+            request.intakeDetailsSnapshot ??
+            detailsFromAnswers(request.intakeSnapshot ?? {}),
+          files: files
+            .filter((file) => file.createdAt <= request.intakeSubmittedAt!)
+            .map((file) => ({ id: String(file._id), name: file.name })),
+        })
+      : undefined,
+    hasUnsubmittedChanges:
+      !!request.intakeSubmittedAt &&
+      (await hashIntakeToken(
+        submissionContent(
+          request.intakeAnswers ?? {},
+          details,
+          files.map((f) => String(f._id)),
+        ),
+      )) !==
+        (request.intakeSubmittedContentHash ??
+          (await hashIntakeToken(
+            submissionContent(
+              request.intakeSnapshot ?? {},
+              request.intakeDetailsSnapshot ??
+                detailsFromAnswers(request.intakeSnapshot ?? {}),
+              files
+                .filter((f) => f.createdAt <= request.intakeSubmittedAt!)
+                .map((f) => String(f._id)),
+            ),
+          ))),
+    skippedSteps: request.intakeSkippedSteps ?? [],
+    status: request.status,
+
+    submittedAt: request.intakeSubmittedAt,
+    updatedAt: request.updatedAt,
+    companyResearch:
+      request.intakeCompanyResearch?.status === "completed"
+        ? request.intakeCompanyResearch
+        : undefined,
+    cyberResearch: request.intakeCyberResearch,
+    premiumDraftContentHash,
+    premiumEstimate: request.intakePremiumEstimate && (request.intakePremiumEstimate.provisional ? request.intakePremiumEstimate.contentHash === premiumDraftContentHash : !request.intakeSubmittedContentHash || request.intakePremiumEstimate.contentHash === request.intakeSubmittedContentHash) ? request.intakePremiumEstimate : undefined,
+    // A client created by this draft is not a saved company to offer back.
+    orgId: (await draftClient(ctx, request))
+      ? undefined
+      : request.clientOrgId,
+    canUseSavedCompany:
+      !!request.intakeSavedCompany || !!request.intakeNewCompany,
+    verified,
+    files: await Promise.all(
+      files.map(async (f) => ({
+        id: f._id,
+        name: f.name,
+        category: f.category,
+        prefillCoveragesJson: f.prefillCoveragesJson,
+        prefillStatus: f.prefillStatus,
+        prefillStartedAt: f.prefillStartedAt,
+        url: await ctx.storage.getUrl(f.fileId),
+      })),
+    ),
+  };
+}
 export const get = query({
   args: { requestId: v.id("procurementRequests") },
   handler: async (ctx, args) => {
     const { user, request } = await ownedRequest(ctx, args.requestId);
-    const files = await ctx.db
-      .query("requestIntakeFiles")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .take(30);
-    const details =
-      request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
-    const premiumDraftContentHash = await hashIntakeToken(submissionContent(request.intakeAnswers ?? {}, activeIntakeDetails(details,request.intakeAnswers?.intakeGoal), files.map(file=>String(file._id))));
-    const hasTypedScope = details.coverages.some(
-      (line) =>
-        line.properties !== undefined ||
-        line.vehicles !== undefined ||
-        line.scopeDescription !== undefined,
+    return applicationView(
+      ctx,
+      request,
+      !!user.emailVerificationTime && !user.intakeRestricted,
     );
-    const hasTypedAdditional = details.coverages.some(
-      (line) => line.additionalCoverages !== undefined,
-    );
-    return {
-      requestId: request._id,
-      vehicleRelevance: request.intakeVehicleRelevance,
-      answers: request.intakeAnswers ?? {},
-      followupBatches: {
-        acord: {
-          status: "ready" as const, token: BAKED_COVERAGE_QUESTIONS_VERSION,
-          contextHash: BAKED_COVERAGE_QUESTIONS_VERSION, startedAt: 0, current: true, enriching: false, preloaded: false,
-          questions: bakedCoverageQuestions({ answers: request.intakeAnswers ?? {}, details }),
-        },
-        additional: request.intakeFollowups?.additional ? {...request.intakeFollowups.additional, current: request.intakeFollowups.additional.contextHash === await followupContextHash(ctx, request, "additional"), questions: request.intakeFollowups.additional.status === "ready" ? request.intakeFollowups.additional.questions : []} : undefined,
-      },
-      details: {
-        ...details,
-        scopeNote:
-          details.scopeNote ??
-          (hasTypedScope ? "" : (request.intakeAnswers?.coverageScope ?? "")),
-        additionalNote:
-          details.additionalNote ??
-          (hasTypedAdditional
-            ? ""
-            : (request.intakeAnswers?.separateQuotes ?? "")),
-      },
-      step:
-        request.intakeSchemaVersion === 1
-          ? [1, 6, 10, 20, 28][request.intakeStep ?? 0]
-          : (request.intakeStep ?? 0),
-      revision: request.intakeRevision ?? 0,
-      submitted: !!request.intakeSubmittedAt,
-      submissionBaseline: request.intakeSubmittedAt
-        ? (request.intakeSubmittedApplication ??
-          request.intakeSubmissionBaseline ?? {
-            answers: request.intakeSnapshot ?? {},
-            details:
-              request.intakeDetailsSnapshot ??
-              detailsFromAnswers(request.intakeSnapshot ?? {}),
-            files: files
-              .filter((file) => file.createdAt <= request.intakeSubmittedAt!)
-              .map((file) => ({ id: String(file._id), name: file.name })),
-          })
-        : undefined,
-      hasUnsubmittedChanges:
-        !!request.intakeSubmittedAt &&
-        (await hashIntakeToken(
-          submissionContent(
-            request.intakeAnswers ?? {},
-            details,
-            files.map((f) => String(f._id)),
-          ),
-        )) !==
-          (request.intakeSubmittedContentHash ??
-            (await hashIntakeToken(
-              submissionContent(
-                request.intakeSnapshot ?? {},
-                request.intakeDetailsSnapshot ??
-                  detailsFromAnswers(request.intakeSnapshot ?? {}),
-                files
-                  .filter((f) => f.createdAt <= request.intakeSubmittedAt!)
-                  .map((f) => String(f._id)),
-              ),
-            ))),
-      skippedSteps: request.intakeSkippedSteps ?? [],
-      status: request.status,
-
-      submittedAt: request.intakeSubmittedAt,
-      updatedAt: request.updatedAt,
-      companyResearch:
-        request.intakeCompanyResearch?.status === "completed"
-          ? request.intakeCompanyResearch
-          : undefined,
-      cyberResearch: request.intakeCyberResearch,
-      premiumDraftContentHash,
-      premiumEstimate: request.intakePremiumEstimate && (request.intakePremiumEstimate.provisional ? request.intakePremiumEstimate.contentHash === premiumDraftContentHash : !request.intakeSubmittedContentHash || request.intakePremiumEstimate.contentHash === request.intakeSubmittedContentHash) ? request.intakePremiumEstimate : undefined,
-      // A client created by this draft is not a saved company to offer back.
-      orgId: (await draftClient(ctx, request))
-        ? undefined
-        : request.clientOrgId,
-      canUseSavedCompany:
-        !!request.intakeSavedCompany || !!request.intakeNewCompany,
-      verified: !!user.emailVerificationTime && !user.intakeRestricted,
-      files: await Promise.all(
-        files.map(async (f) => ({
-          id: f._id,
-          name: f.name,
-          category: f.category,
-          prefillCoveragesJson: f.prefillCoveragesJson,
-          prefillStatus: f.prefillStatus,
-          prefillStartedAt: f.prefillStartedAt,
-          url: await ctx.storage.getUrl(f.fileId),
-        })),
-      ),
-    };
+  },
+});
+/**
+ * Read-only `get` for an operator impersonating the request's client. It is
+ * separate from `get` because intake actions use `get` as their owner check.
+ */
+export const getImpersonated = query({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, args) => {
+    const org = await impersonatedClient(ctx);
+    const request = await ctx.db.get(args.requestId);
+    if (
+      !org ||
+      !request ||
+      request.deletedAt ||
+      request.intakeSchemaVersion === undefined ||
+      request.clientOrgId !== org._id
+    )
+      return null;
+    // Operators never confirm applicant ownership.
+    return applicationView(ctx, request, true);
   },
 });
 export const drafts = query({
@@ -646,8 +730,14 @@ export const drafts = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     const user = userId ? await ctx.db.get(userId) : null;
-    if (!user || user.accountKind === "operator" || user.serviceAccountKind)
-      return [];
+    if (user?.accountKind === "operator") {
+      const client = await impersonatedApplications(ctx);
+      if (!client) return [];
+      return client.rows
+        .filter((r) => r.status === "draft" && !r.intakeSubmittedAt)
+        .map((r) => draftSummary(r, client.org.name));
+    }
+    if (!user || user.serviceAccountKind) return [];
     const sessionId = await getAuthSessionId(ctx);
     if (
       sessionId &&
@@ -668,21 +758,7 @@ export const drafts = query({
           !r.intakeSubmittedAt &&
           (user.intakeRestricted || r.intakeVerifiedAccess),
       )
-      .map((r) => ({
-        id: r._id,
-        title: r.intakeAnswers?.dba || r.intakeAnswers?.legalName || r.title,
-        coverage:
-          r.intakeAnswers?.intakeGoal === "savings"
-            ? "Policy savings review"
-            : r.intakeAnswers?.coverage || "",
-        effectiveDate: r.intakeAnswers?.effectiveDate || "",
-        insuredName:
-          r.intakeAnswers?.legalName ||
-          r.intakeAnswers?.name ||
-          user.name ||
-          "",
-        updatedAt: r.updatedAt,
-      }));
+      .map((r) => draftSummary(r, user.name ?? ""));
   },
 });
 /** Owners can return to submitted applications without confirming email. */
@@ -691,8 +767,14 @@ export const submitted = query({
   handler: async (ctx) => {
     const userId = await getSessionUserId(ctx, true);
     const user = userId ? await ctx.db.get(userId) : null;
-    if (!user || user.accountKind === "operator" || user.serviceAccountKind)
-      return [];
+    if (user?.accountKind === "operator") {
+      const client = await impersonatedApplications(ctx);
+      if (!client) return [];
+      return client.rows
+        .filter((r) => r.intakeSubmittedAt)
+        .map((r) => submittedSummary(r, client.org.name));
+    }
+    if (!user || user.serviceAccountKind) return [];
     const rows = await ctx.db
       .query("procurementRequests")
       .withIndex("owner_updated", (q) => q.eq("ownerUserId", user._id))
@@ -718,18 +800,7 @@ export const submitted = query({
               .first(),
           ]);
           if (!org || org.deletedAt !== undefined || !membership) return null;
-          return {
-            id: r._id,
-            title: r.intakeAnswers?.dba || r.intakeAnswers?.legalName || r.title,
-            coverage:
-              r.intakeAnswers?.intakeGoal === "savings"
-                ? "Policy savings review"
-                : r.intakeAnswers?.coverage || "",
-            effectiveDate:
-              r.intakeAnswers?.effectiveDate || r.targetEffectiveDate || "",
-            insuredName: r.intakeAnswers?.legalName || org.name,
-            status: r.status,
-          };
+          return submittedSummary(r, org.name);
         }),
     );
     return accessible.filter((r) => r !== null);

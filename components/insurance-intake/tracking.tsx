@@ -42,6 +42,7 @@ export function IntakeTracking({
   footer,
   onEdit,
   confirmation,
+  readOnly = false,
 }: {
   data: Omit<FunctionReturnType<typeof api.requestIntake.get>, "details"> & {
     details: IntakeDetails;
@@ -50,6 +51,8 @@ export function IntakeTracking({
   banner?: ReactNode;
   footer?: ReactNode;
   onEdit?: (step: number) => void;
+  /** An operator's view: no edit links and nothing prepared for the applicant. */
+  readOnly?: boolean;
 }) {
   const params = useSearchParams();
   useEffect(() => {
@@ -82,9 +85,9 @@ export function IntakeTracking({
   const preparePremiumEstimate = useMutation(api.requestIntake.preparePremiumEstimate);
   useEffect(() => {
     const preferDraft=!data.submitted || data.hasUnsubmittedChanges;
-    if (!isSavings && (!data.premiumEstimate || (preferDraft && data.premiumEstimate.contentHash!==data.premiumDraftContentHash)))
+    if (!readOnly && !isSavings && (!data.premiumEstimate || (preferDraft && data.premiumEstimate.contentHash!==data.premiumDraftContentHash)))
       void preparePremiumEstimate({requestId:data.requestId,preferDraft}).catch(() => undefined);
-  }, [data.submitted, data.hasUnsubmittedChanges, data.requestId, data.premiumEstimate, data.premiumDraftContentHash, isSavings, preparePremiumEstimate]);
+  }, [readOnly, data.submitted, data.hasUnsubmittedChanges, data.requestId, data.premiumEstimate, data.premiumDraftContentHash, isSavings, preparePremiumEstimate]);
   const has = (...keys: (keyof typeof a)[]) =>
     keys.every((key) => !!a[key]?.trim());
   const complete = [
@@ -167,7 +170,9 @@ export function IntakeTracking({
             : "Review your policies and business details"
           : data.submitted
             ? "Your insurance application has been submitted"
-            : "Review your insurance application before submitting"}
+            : readOnly
+              ? "Insurance application in progress"
+              : "Review your insurance application before submitting"}
       </h1>
       {data.submitted && (
         <p className={`mt-3 text-muted-foreground ${typeStyle("body.root")}`}>
@@ -224,7 +229,7 @@ export function IntakeTracking({
                           ? "Complete"
                           : "In Progress"}
                     </StatusTag>
-                    {isSavings && data.submitted ? null : onEdit ? (
+                    {(isSavings && data.submitted) || readOnly ? null : onEdit ? (
                       <PillButton
                         variant="ghost"
                         onClick={(event) => {
