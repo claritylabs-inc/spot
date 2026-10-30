@@ -201,7 +201,7 @@ export function usePdfFormEditing({
       : undefined;
   const hint = placing
     ? `Click where ${placingField ? `“${placingField.label}”` : "the text"} goes. Esc cancels.`
-    : `Type into any highlighted field. Save files version ${fill.version + 1}.`;
+    : "Click any highlighted field to type.";
 
   const toolbarActions = editing ? null : (
     <PillButton
@@ -226,6 +226,7 @@ export function usePdfFormEditing({
     <div className="flex h-12 shrink-0 items-center gap-2 border-t border-border px-3">
       <p
         role="status"
+        title={hint}
         className={`min-w-0 flex-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}
       >
         {hint}
