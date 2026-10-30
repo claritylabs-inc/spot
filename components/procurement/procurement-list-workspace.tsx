@@ -70,6 +70,7 @@ import {
   SortableTableHead,
 } from "@/components/ui/table";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useLocalDraft } from "@/hooks/use-local-draft";
 import { useTableSort } from "@/hooks/use-table-sort";
@@ -706,7 +707,7 @@ export function ProcurementListWorkspace({
     `procurement:${scopeKey}:list-panel`,
     null,
   );
-  const [filter, setFilter] = useFollowedState<StatusFilter>(
+  const [filter, setFilter] = useSavedFollowedState<StatusFilter>(
     `procurement:${scopeKey}:list-filter`,
     "all",
   );
@@ -714,11 +715,11 @@ export function ProcurementListWorkspace({
     `procurement:${scopeKey}:list-search`,
     "",
   );
-  const [statusFilter, setStatusFilter] = useFollowedState<string[]>(
+  const [statusFilter, setStatusFilter] = useSavedFollowedState<string[]>(
     `procurement:${scopeKey}:list-status`,
     [],
   );
-  const [clientFilter, setClientFilter] = useFollowedState<string[]>(
+  const [clientFilter, setClientFilter] = useSavedFollowedState<string[]>(
     `procurement:${scopeKey}:list-client`,
     [],
   );

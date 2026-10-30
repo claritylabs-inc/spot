@@ -53,6 +53,7 @@ import {
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTableSort } from "@/hooks/use-table-sort";
 import type { FunctionReturnType } from "convex/server";
@@ -138,16 +139,16 @@ const BROKER_SORT_COLUMNS = {
 
 export default function OperatorBrokersPage() {
   const [creating, setCreating] = useFollowedState("brokers:creating", false);
-  const [countries, setCountries] = useFollowedState<string[]>(
+  const [countries, setCountries] = useSavedFollowedState<string[]>(
     "brokers:countries",
     [],
   );
-  const [regions, setRegions] = useFollowedState<string[]>(
+  const [regions, setRegions] = useSavedFollowedState<string[]>(
     "brokers:regions",
     [],
   );
-  const [lines, setLines] = useFollowedState<string[]>("brokers:lines", []);
-  const [statuses, setStatuses] = useFollowedState<string[]>(
+  const [lines, setLines] = useSavedFollowedState<string[]>("brokers:lines", []);
+  const [statuses, setStatuses] = useSavedFollowedState<string[]>(
     "brokers:statuses",
     [],
   );

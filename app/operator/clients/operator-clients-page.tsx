@@ -30,6 +30,7 @@ import {
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTableSort } from "@/hooks/use-table-sort";
 import type { FunctionReturnType } from "convex/server";
@@ -105,7 +106,7 @@ const CLIENT_SORT_COLUMNS = {
 export default function OperatorClientsScreen() {
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useFollowedState("clients:list:search", "");
-  const [filter, setFilter] = useFollowedState<ClientFilter>(
+  const [filter, setFilter] = useSavedFollowedState<ClientFilter>(
     "clients:list:filter",
     "all",
   );
