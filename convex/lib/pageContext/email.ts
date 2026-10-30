@@ -113,8 +113,10 @@ export function teamEmailThreadHints(read: unknown): string[] {
       const subject = text(thread.thread?.subject);
       if (subject && squash(subject).includes(label))
         hints.push(`Company named in the subject: "${subject.slice(0, 160)}"`);
-      const signature = signatureLines(sender.body).find((line) =>
-        squash(line).includes(label),
+      // The sender's own name line may share the company's name.
+      const name = sender.name ? squash(sender.name) : undefined;
+      const signature = signatureLines(sender.body).find(
+        (line) => squash(line).includes(label) && squash(line) !== name,
       );
       if (signature)
         hints.push(

@@ -69,7 +69,7 @@ test("page types map to plain reads of the attached record", () => {
                 forwarded: {
                   email: {
                     from: { address: "Lucy@Luminvera.com", name: "Lucy Luminvera" },
-                    body: "Hi,\nWe need a quote.\n\nLucy\nFounder, Luminvera Robotics Inc.\n> older",
+                    body: "Hi,\nWe need a quote.\n\nLucy Luminvera\nFounder, Luminvera Robotics Inc.\n> older",
                   },
                 },
               },
