@@ -1,3 +1,4 @@
+import type { OperatorPrefetchPage } from "../operatorAgentIntentRegistry";
 import type { OperatorPageContextEntry } from "./types";
 
 type RequestRead = {
@@ -69,15 +70,18 @@ export function procurementRequestHints(
       hints.push(
         `Client: ${text(request.clientName) ?? "unnamed"} (orgId ${orgId})`,
       );
-    const outreaches = Array.isArray(read.outreaches) ? read.outreaches : [];
-    hints.push(
-      outreaches.length
-        ? `Provider outreach: ${outreaches.length}${outreaches.length >= 100 ? "+" : ""} (${countBy(outreaches)})`
-        : "No provider outreach yet.",
-    );
-    const proposals = Array.isArray(read.proposals) ? read.proposals : [];
+    const outreaches = read.outreaches;
+    if (Array.isArray(outreaches))
+      hints.push(
+        outreaches.length
+          ? `Provider outreach: ${outreaches.length}${outreaches.length >= 100 ? "+" : ""} (${countBy(outreaches)})`
+          : "No provider outreach yet.",
+      );
+    const proposals = read.proposals;
     const more = typeof read.proposalsNextCursor === "string";
-    if (!proposals.length) hints.push("No proposals yet.");
+    if (!Array.isArray(proposals)) {
+      // Outreach and proposals are read only where the page shows them.
+    } else if (!proposals.length) hints.push("No proposals yet.");
     else {
       const stale = proposals.filter((row) => row.reviewStale === true).length;
       const unreviewed = proposals.filter(
@@ -135,6 +139,33 @@ export function procurementListHints(listRead: unknown): string[] {
   ];
 }
 
+/**
+ * The request page's section from its URL (`?view=`, `market` being the old
+ * Providers name), and the application sidebar's notes, which only the
+ * summary names (`components/procurement/procurement-page-context.ts`).
+ */
+export function procurementRequestSection(page?: OperatorPrefetchPage) {
+  if (page?.summary?.includes("Open drawer: internal notes")) return "notes";
+  if (page?.summary?.includes("Open drawer: provider packet link"))
+    return "packet_link";
+  let view: string | null = null;
+  try {
+    view = page?.href
+      ? new URL(page.href, "https://spot.invalid").searchParams.get("view")
+      : null;
+  } catch {
+    view = null;
+  }
+  if (view === "proposals" || view === "market") return "providers";
+  if (view === "information" || view === "cadence" || view === "email")
+    return view;
+  return page?.summary?.includes("› Submission notes")
+    ? "notes"
+    : "application";
+}
+
+const PROVIDER_DRAWER_KINDS = ["procurement_outreach", "procurement_proposal"];
+
 export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
   {
     pageTypes: ["procurement_request"],
@@ -144,14 +175,25 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
       [
         {
           toolName: "get_procurement_request",
-          input: ({ focus }) =>
-            focus.entityId
-              ? {
-                  procurementRequestId: focus.entityId,
-                  include: ["outreach", "proposals"],
-                  view: "summary",
-                }
-              : undefined,
+          input: ({ focus, page, relatedId }) => {
+            if (!focus.entityId) return undefined;
+            const section = procurementRequestSection(page);
+            const include =
+              section === "providers" ||
+              section === "cadence" ||
+              PROVIDER_DRAWER_KINDS.some((kind) => relatedId?.(kind))
+                ? ["outreach", "proposals"]
+                : section === "email"
+                  ? ["emailThreads"]
+                  : [];
+            return {
+              procurementRequestId: focus.entityId,
+              ...(include.length ? { include } : {}),
+              view: "summary",
+            };
+          },
+          partial:
+            "identity, status and the application summary, plus provider outreach and proposals on the Providers view or the inbox's conversations on the Inbox view; get_procurement_request with include application, files, outreach, proposals or emailThreads reads the rest",
         },
         {
           toolName: "get_procurement_proposal",
@@ -161,19 +203,45 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
               ? { procurementProposalId: proposalId, view: "compact" }
               : undefined;
           },
+          partial:
+            "offer headlines, reviews and markdown without document URLs; get_procurement_proposal with view full adds documents and the full offer",
         },
         {
-          // An open information form or question.
           toolName: "get_procurement_information",
-          input: ({ focus, relatedId }) =>
+          input: ({ focus, page, relatedId }) =>
             focus.entityId &&
-            (relatedId?.("procurement_information_form") ??
+            (procurementRequestSection(page) === "information" ||
+              relatedId?.("procurement_information_form") ||
               relatedId?.("procurement_information_question"))
               ? {
                   procurementRequestId: focus.entityId,
                   include: ["information"],
                 }
               : undefined,
+        },
+        {
+          toolName: "get_procurement_packet",
+          input: ({ focus, page }) =>
+            focus.entityId && procurementRequestSection(page) === "notes"
+              ? { procurementRequestId: focus.entityId, view: "internal" }
+              : undefined,
+        },
+        {
+          toolName: "list_broker_packet_links",
+          input: ({ focus, page }) =>
+            focus.entityId && procurementRequestSection(page) === "packet_link"
+              ? { procurementRequestId: focus.entityId }
+              : undefined,
+        },
+        {
+          // The request document open in its drawer.
+          toolName: "read_client_file",
+          input: ({ relatedId }) => {
+            const clientFileId = relatedId?.("client_file");
+            return clientFileId ? { clientFileId, maxChars: 6_000 } : undefined;
+          },
+          partial:
+            "the open document's first 6,000 characters; read_client_file with a larger maxChars (up to 40,000) reads more",
         },
       ],
     ],
@@ -195,11 +263,16 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
             focus.entityId
               ? { orgId: focus.entityId, view: "summary", limit: 50 }
               : undefined,
+          partial:
+            "the 50 most recently updated requests in summary form; follow nextCursor for more, and get_procurement_request reads one in detail",
         },
       ],
     ],
     hints: (results) =>
       procurementListHints(results.get("list_procurement_requests")),
+    staticHints: [
+      "Checked rows are the related procurement_request records, in list order.",
+    ],
   },
   {
     // Every client's requests: no single record to read.
@@ -207,5 +280,9 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
     noun: "procurement list across clients",
     families: ["procurement"],
     prefetch: [],
+    staticHints: [
+      "Page requests across clients with list_procurement_requests (no orgId); the summary names the list's active filters.",
+      "Checked rows are the related procurement_request records; read one with get_procurement_request.",
+    ],
   },
 ];
