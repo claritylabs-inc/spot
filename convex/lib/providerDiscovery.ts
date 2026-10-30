@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COVERAGE_OPTIONS } from "../../lib/insurance-intake-details";
+import { MARKET_SEARCH_COVERAGE_LABELS } from "../../lib/insurance-intake-details";
 import type {
   ClRouterCreateDiscoveryRequest,
   ClRouterDiscoveryGenerator,
@@ -66,16 +66,12 @@ export type ProviderDiscoveryCriteria = {
   industry?: string;
 };
 
-/** Coverage catalog labels a discovery can search for. */
-export const PROVIDER_DISCOVERY_LINES: readonly string[] = COVERAGE_OPTIONS.filter(
-  (option) => option.id !== "unknown" && option.id !== "other",
-).map((option) => option.label);
 export const MAX_PROVIDER_DISCOVERY_LINES = 10;
 export const MAX_PROVIDER_DISCOVERY_STATES = 20;
 export const MAX_PROVIDER_DISCOVERY_INDUSTRY_CHARS = 80;
 
 const LINE_BY_KEY = new Map(
-  PROVIDER_DISCOVERY_LINES.map((label) => [label.toLowerCase(), label]),
+  MARKET_SEARCH_COVERAGE_LABELS.map((label) => [label.toLowerCase(), label]),
 );
 const STATE_CODES = new Set<string>(USPS_STATE_CODES);
 
@@ -95,7 +91,7 @@ export function providerDiscoveryCriteria(input: {
         if (!label)
           throw new NoWriteInputError(
             "invalid_line",
-            `${JSON.stringify(line)} is not a coverage line. Use one of: ${PROVIDER_DISCOVERY_LINES.join(", ")}.`,
+            `${JSON.stringify(line)} is not a coverage line. Use one of: ${MARKET_SEARCH_COVERAGE_LABELS.join(", ")}.`,
           );
         return label;
       }),

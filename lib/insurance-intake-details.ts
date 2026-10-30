@@ -90,6 +90,11 @@ export const COVERAGE_OPTIONS = [
   },
 ] as const;
 export type CoverageId = (typeof COVERAGE_OPTIONS)[number]["id"];
+/** Catalog coverage labels a provider market search can name. */
+export const MARKET_SEARCH_COVERAGE_LABELS: readonly string[] =
+  COVERAGE_OPTIONS.filter(
+    (option) => option.id !== "unknown" && option.id !== "other",
+  ).map((option) => option.label);
 export type CoverageRequest = {
   coverage: CoverageId;
   limits: Record<string, string>;
