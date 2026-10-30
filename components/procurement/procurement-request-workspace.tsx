@@ -2208,10 +2208,6 @@ export function ProcurementRequestWorkspace({
     orgId: clientOrgId,
     documentType: "policy",
   });
-  const requestRows = useQuery(api.procurementRequests.list, {
-    clientOrgId,
-    limit: 100,
-  });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const clients = useCachedOperatorClients();
   const proposals = useQuery(api.procurementProposals.list, { requestId });
@@ -2287,14 +2283,6 @@ export function ProcurementRequestWorkspace({
   const policyOptions = useMemo(
     () => (policies ?? []) as PolicyOption[],
     [policies],
-  );
-  const requestOptions = useMemo(
-    () =>
-      (requestRows ?? []) as Array<{
-        _id: Id<"procurementRequests">;
-        title: string;
-      }>,
-    [requestRows],
   );
   const closeRightPanel = useCallback(() => onRightPanel(null), [onRightPanel]);
 
@@ -2417,7 +2405,6 @@ export function ProcurementRequestWorkspace({
               replyable={thread.source === "outreach"}
               requestId={requestId}
               includeArchived
-              requests={requestOptions}
               readOnly={readOnly}
               onClose={closeEmail}
             />
@@ -2428,7 +2415,7 @@ export function ProcurementRequestWorkspace({
         openingEmailId.current = null;
       }
     },
-    [closePdf, closeEmail, onRightPanel, readOnly, requestOptions, requestId],
+    [closePdf, closeEmail, onRightPanel, readOnly, requestId],
   );
 
   // The reader opens from the URL on its own, so a saved link works whether or
@@ -2830,7 +2817,6 @@ export function ProcurementRequestWorkspace({
     result === undefined ||
     policies === undefined ||
     policyRows === undefined ||
-    requestRows === undefined ||
     brokers === undefined ||
     proposals === undefined
   ) {
