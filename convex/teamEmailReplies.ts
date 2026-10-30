@@ -33,7 +33,7 @@ import {
  *
  * The browser's session-authenticated `prepareSend` stores the approved
  * fingerprint on the draft. Agent replies are chat drafts linked to the thread
- * (`save_email_draft` with `teamEmailThreadId`) and send with `send_email_draft`.
+ * (`save_email_draft` with `teamEmailThreadId`) and send with `send_email_drafts`.
  */
 
 const BROWSER_KEY = /^[A-Za-z0-9-]{8,80}$/;

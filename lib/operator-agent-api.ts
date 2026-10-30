@@ -98,7 +98,7 @@ type BackendConfirmation = {
     | "unavailable";
   actionable: boolean;
   expiresAt?: number;
-  emailDraftId?: string;
+  emailDraftIds?: string[];
 };
 
 type ListThreadsArgs = {
@@ -188,8 +188,8 @@ export type OperatorAgentConfirmation = {
   destructive: boolean;
   state: BackendConfirmation["state"];
   actionable: boolean;
-  /** The agent email draft a `send_email_draft` approval would send. */
-  emailDraftId?: string;
+  /** The agent email drafts a send approval would send. */
+  emailDraftIds?: string[];
 };
 
 export type OperatorAgentMessage = {
@@ -364,7 +364,7 @@ function normalizeConfirmation(
     destructive: confirmation.effect === "destructive",
     state: confirmation.state,
     actionable: confirmation.actionable,
-    emailDraftId: confirmation.emailDraftId,
+    emailDraftIds: confirmation.emailDraftIds,
   };
 }
 

@@ -103,7 +103,7 @@ the same team tables.
 ## Sending and recovery
 
 Every operator-agent and MCP email starts as a chat draft (`save_email_draft`)
-that operators can edit in the shared composer before `send_email_draft` or the
+that operators can edit in the shared composer before `send_email_drafts` or the
 composer's Send. A reply is a draft linked to its conversation (reply-all
 recipients, `Re:` subject, threading and quoted history from the thread); a
 client information request is a draft with `clientOutreach` that launches the

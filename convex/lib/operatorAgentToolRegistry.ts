@@ -110,7 +110,7 @@ export const OPERATOR_TOOL_FAMILY_ALIASES: Readonly<
 > = { threads: "operator_conversations" };
 
 const OUTBOUND_EMAIL_GUIDANCE = `EMAIL DRAFTS AND DELIVERY:
-Every email starts as a draft: save_email_draft creates or revises it (a new email, a reply with teamEmailThreadId, or a client information request with informationFormId), adding requested clientFileIds or policyIds and followUps in the same call, and send_email_draft sends it. The operator can edit the draft before it sends. On edits, omitted fields and attachments are preserved; use explicit empty arrays to clear copies or retained attachments. Every edit invalidates prior send approval. send_email_draft requires a current affirmative send request; draft-only, negated, advisory and uncertain requests remain drafts.
+Every email starts as a draft: save_email_draft creates or revises it (a new email, a reply with teamEmailThreadId, or a client information request with informationFormId), adding requested clientFileIds or policyIds and followUps in the same call, and send_email_drafts sends it. The operator can edit the draft before it sends. On edits, omitted fields and attachments are preserved; use explicit empty arrays to clear copies or retained attachments. Every edit invalidates prior send approval. send_email_drafts requires a current affirmative send request; draft-only, negated, advisory and uncertain requests remain drafts.
 Attach only requested documents. For a COI request, include only the generated COI unless an original policy PDF was separately requested. Each recipient receives only their own COI; a bundle of several COIs needs exact recipient and attachment confirmation. Never claim a file is attached before the tool succeeds, and do not reattach files already on the draft.
 ${COI_DISCLAIMER}
 Use 1–3 short paragraphs or a short bullet list. Include only policy facts useful to the recipient unless a detailed memo was requested.
@@ -122,11 +122,11 @@ Provider outreach for a procurement request goes through get/update/send_procure
 OPERATOR OUTBOUND EMAIL:
 These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator, but never sign your name; the signature is added on send. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. For a new email, always pass the recipient's exact address in "to".
 These tools are for separately requested emails. A direct answer to the operator belongs in your final response; command email delivers that response automatically. A request for no changes does not authorize saving a draft.
-Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId and the body; recipients, subject and threading come from the thread. Each conversation's reply box holds a suggested reply (replySuggestion in get_team_inbox_thread); when the operator asks to change the reply in the inbox, revise it with update_team_reply_draft. To send a reply from this conversation, save it with save_email_draft (teamEmailThreadId) and send it with send_email_draft on an explicit instruction. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
+Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId and the body; recipients, subject and threading come from the thread. A reply draft is also the conversation's suggested reply in its inbox reply box (replySuggestion in get_team_inbox_thread): when the operator asks to change that reply, revise it with save_email_draft (teamEmailThreadId), and send it with send_email_drafts only on an explicit instruction. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
 Attachments: use save_email_draft policyIds for explicitly requested original policy PDFs, or clientFileIds for exact stored client files (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then add its clientFileId with save_email_draft. Do not describe a certificate or file as attached until the tool returns.
 Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
 When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
-Draft first. "Let me see it", "before you send" or any review wording means call save_email_draft only; send_email_draft requires an explicit current instruction to send. The operator sees the draft below your reply, so summarize it in a sentence (recipient, subject, what it asks) instead of repeating the body, and revise with save_email_draft when asked. send_email_draft asks the operator to approve the complete email; report it as sent only when the tool returns status "sent".`;
+Draft first. "Let me see it", "before you send" or any review wording means call save_email_draft only; send_email_drafts requires an explicit current instruction to send. The operator sees the draft below your reply, so summarize it in a sentence (recipient, subject, what it asks) instead of repeating the body, and revise with save_email_draft when asked. send_email_drafts asks the operator to approve every complete email; report each as sent only when its result has status "sent".`;
 
 export type OperatorToolTarget = {
   kind?: string;
@@ -346,7 +346,7 @@ const replyEmailThreadSpec = defineOperatorTool({
   version: 3,
   offered: false,
   description:
-    "Save a reply draft on a shared team email thread (same as save_email_draft with teamEmailThreadId). Never sends; send it with send_email_draft.",
+    "Save a reply draft on a shared team email thread (same as save_email_draft with teamEmailThreadId). Never sends; send it with send_email_drafts.",
   inputSchema: z.object({
     teamEmailThreadId: omittable(teamEmailThreadId),
     procurementEmailThreadId: omittable(procurementEmailThreadId),
@@ -1883,10 +1883,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: () => ({ kind: "platform", id: "team-inbox" }),
     summarize: (input) => `Search team email for “${input.query}”`,
   }),
+  // Retired: the reply draft is save_email_draft with teamEmailThreadId, which also fills the inbox reply box.
   update_team_reply_draft: defineOperatorTool({
     family: "outbound_email",
-    version: 1,
-    description: `Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it from the inbox. To send from this conversation, draft the reply with save_email_draft (teamEmailThreadId) and send it with send_email_draft. Follow the email writing rules, including the provider rules when replying to a provider. Plain text except for factual bullets, opening with the greeting from the rules. ${REPLY_DRAFT_SIGN_OFF} The signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.`,
+    version: 2,
+    offered: false,
+    description:
+      "Save a reply draft on a team conversation (same as save_email_draft with teamEmailThreadId); it is also the suggested reply in the conversation's inbox reply box. Never sends.",
     inputSchema: z.object({
       teamEmailThreadId,
       reply: z.string().trim().min(1).max(10_000).describe("Complete plain-text reply body"),
@@ -1895,8 +1898,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     effect: "reversible_write",
     requiredRole: "operator",
     confirmation: "none",
+    execution: "action",
     target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId }),
-    summarize: (input) => `Update the reply draft on email thread ${input.teamEmailThreadId}`,
+    summarize: (input) => `Draft a reply on email thread ${input.teamEmailThreadId}`,
   }),
   link_team_inbox_thread: defineOperatorTool({
     family: "outbound_email",
@@ -2088,7 +2092,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   save_email_draft: defineOperatorTool({
     family: "outbound_email",
     version: 2,
-    description: "Create or revise (draftId) the one draft for every email you send; it never sends, and the operator can edit it before send_email_draft. Three modes, chosen by fields: a new email (to, subject, body; add orgId or procurementRequestId to file it); a reply (teamEmailThreadId and body; recipients, \"Re:\" subject, threading, quoted history, Always CC and an owner copy are filled in, override with to/cc); a client information request (procurementRequestId, informationFormId, to = a listed client contact, subject, body without greeting or signature; sending starts the request's client email sequence, and reminders stop when they reply or submit the form). Do not combine teamEmailThreadId with informationFormId. followUps nudges the recipient on the same thread until anyone replies: {followUpCount, intervalBusinessDays}, \"auto\" for Spot's schedule, or null for none. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. A draft keeps its sender unless fromUserId names another operator. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Use real recipients and a complete, placeholder-free body. A new draft to the same recipient (or on the same thread) replaces the earlier draft.",
+    description: "Create or revise (draftId) the one draft for every email you send; it never sends, and the operator can edit it before send_email_drafts. Three modes, chosen by fields: a new email (to, subject, body; add orgId or procurementRequestId to file it); a reply (teamEmailThreadId and body; recipients, \"Re:\" subject, threading, quoted history, Always CC and an owner copy are filled in, override with to/cc; the reply is also the suggested reply in the conversation's inbox reply box, so revise it here when asked to change that reply, and use [needs: …] only for facts nobody has provided); a client information request (procurementRequestId, informationFormId, to = a listed client contact, subject, body without greeting or signature; sending starts the request's client email sequence, and reminders stop when they reply or submit the form). Do not combine teamEmailThreadId with informationFormId. followUps nudges the recipient on the same thread until anyone replies: {followUpCount, intervalBusinessDays}, \"auto\" for Spot's schedule, or null for none. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. A draft keeps its sender unless fromUserId names another operator. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Use real recipients and a complete, placeholder-free body. A new draft to the same recipient (or on the same thread) replaces the earlier draft.",
     inputSchema: z.object({
       draftId: omittable(z.string().trim().min(1)),
       fromUserId: omittable(
@@ -2278,9 +2282,26 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: () => ({ kind: "email_draft" }),
     summarize: () => "List email drafts",
   }),
+  send_email_drafts: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Send 1–10 saved drafts from this conversation: emails, replies on their team threads, or client information requests (which start their client email sequence), each with its own follow-ups. One exact approval lists every complete email; any later edit voids it for that draft. Results are per draft. Call only after the operator clearly asked to send.",
+    inputSchema: z.object({
+      draftIds: z.array(z.string().trim().min(1)).min(1).max(10).describe("Exact draft IDs from save_email_draft or list_email_drafts"),
+    }).refine((input) => new Set(input.draftIds).size === input.draftIds.length, "List each draft once"),
+    capability: "operator.email.send",
+    effect: "external_send",
+    requiredRole: "operator",
+    confirmation: "exact",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftIds.length === 1 ? input.draftIds[0] : undefined }),
+    summarize: (input) => `Send ${input.draftIds.length} email draft${input.draftIds.length === 1 ? "" : "s"}`,
+  }),
   send_email_draft: defineOperatorTool({
     family: "outbound_email",
     version: 1,
+    offered: false,
     description:
       "Send one saved draft from this conversation: an email, a reply on its team thread, or a client information request (which starts its client email sequence), with the draft's follow-ups. Delivery is externally visible and requires the operator's exact approval of the complete email; any later edit voids the approval. Call only after the operator clearly asked to send.",
     inputSchema: z.object({
@@ -3230,7 +3251,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     version: 5,
     offered: false,
     description:
-      "Save a client information request draft (same as save_email_draft with procurementRequestId and informationFormId). Never sends; send it with send_email_draft.",
+      "Save a client information request draft (same as save_email_draft with procurementRequestId and informationFormId). Never sends; send it with send_email_drafts.",
     inputSchema: z.object({
       procurementRequestId,
       recipientEmail: emailAddress.describe(

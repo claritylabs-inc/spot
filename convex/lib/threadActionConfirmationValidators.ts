@@ -38,6 +38,8 @@ export const operatorToolActionConfirmationPayloadValidator = v.object({
   input: v.string(),
   inputHash: v.string(),
   sourceFingerprint: v.optional(v.string()),
+  /** Per-target source fingerprints for a batch that sends each target separately (`send_email_drafts`). */
+  sourceFingerprints: v.optional(v.record(v.string(), v.string())),
   idempotencyKey: v.string(),
   capability: v.string(),
   effect: v.union(

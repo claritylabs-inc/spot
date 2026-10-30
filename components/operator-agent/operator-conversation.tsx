@@ -6,7 +6,14 @@ import { Fragment, useMemo, type ComponentProps, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { RotateCcw } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
-import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
+import {
+  StatusTag,
+  type StatusPresentation,
+} from "@claritylabs-inc/ui/components/status-tag";
+import {
+  EmailStackFrame,
+  EmailStackRow,
+} from "@/components/agent-thread/artifacts/email";
 import {
   ChatApprovalActions,
   ChatApprovalCard,
@@ -220,33 +227,38 @@ function EmptyThread({
 /** What an approval will do, under the waiting call's row. */
 function ApprovalDetail({
   title,
-  draft,
+  drafts,
   onOpenDraft,
 }: {
   title: string;
-  /** The email draft a send approval covers, shown instead of its full text. */
-  draft?: OperatorEmailDraftView;
-  onOpenDraft: () => void;
+  /** The email drafts a send approval covers, shown instead of their full text. */
+  drafts: OperatorEmailDraftView[];
+  onOpenDraft: (draftId: string) => void;
 }) {
-  if (draft) {
-    const detail = draftSendDetail(draft);
+  if (drafts.length)
     return (
-      <>
-        <p className="text-foreground/90">{draft.subject || "(no subject)"}</p>
-        <p>
-          To {draft.to.join(", ")}
-          {detail ? ` · ${detail}` : ""}
-        </p>
-        <button
-          type="button"
-          onClick={onOpenDraft}
-          className="mt-1 text-foreground underline underline-offset-2"
-        >
-          Review email
-        </button>
-      </>
+      <ul className="space-y-1.5">
+        {drafts.map((draft) => {
+          const detail = draftSendDetail(draft);
+          return (
+            <li key={draft.id}>
+              <p className="text-foreground/90">{draft.subject || "(no subject)"}</p>
+              <p>
+                To {draft.to.join(", ")}
+                {detail ? ` · ${detail}` : ""}
+              </p>
+              <button
+                type="button"
+                onClick={() => onOpenDraft(draft.id)}
+                className="text-foreground underline underline-offset-2"
+              >
+                Review email
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     );
-  }
   const batch = operatorBatchApprovalDetails(title);
   if (!batch) return <p className="whitespace-pre-line">{title}</p>;
   return (
@@ -468,11 +480,13 @@ export function OperatorConversation({
       .flat()
       .map((draft) => [draft.id, draft]),
   );
-  // A send approval shows its draft, which opens editable in the composer.
-  const approvalDraft = (confirmation: OperatorAgentConfirmation) =>
-    confirmation.emailDraftId
-      ? draftsById.get(confirmation.emailDraftId)
-      : undefined;
+  // A send approval shows its drafts, each opening editable in the composer.
+  const approvalDrafts = (confirmation: OperatorAgentConfirmation) => {
+    const drafts = (confirmation.emailDraftIds ?? []).map((id) => draftsById.get(id));
+    return drafts.length && drafts.every((draft) => draft !== undefined)
+      ? (drafts as OperatorEmailDraftView[])
+      : [];
+  };
   const hasAppShell = useOptionalAppShellSlots();
   const openEmailDraft = useMemo(
     () =>
@@ -503,7 +517,19 @@ export function OperatorConversation({
   );
   const confirmationCard = (confirmation: OperatorAgentConfirmation) => {
     const status = operatorConfirmationStatus(confirmation);
-    const draft = approvalDraft(confirmation);
+    const drafts = approvalDrafts(confirmation);
+    const draft = drafts.length === 1 ? drafts[0] : undefined;
+    if (confirmation.state !== "pending" && drafts.length > 1)
+      return (
+        <ChatApprovalReceipt
+          key={confirmation.id}
+          status={status}
+          title={`Send ${drafts.length} emails`}
+          items={drafts.map(
+            (item) => `${item.subject || "(no subject)"} · ${item.to.join(", ")}`,
+          )}
+        />
+      );
     if (confirmation.state !== "pending")
       return (
         <ChatApprovalReceipt
@@ -534,6 +560,40 @@ export function OperatorConversation({
           onOpen={() => setOpenEmailDraftId(draft.id)}
           onDecision={(decision) => onDecision(confirmation, decision)}
         />
+      );
+    if (drafts.length > 1)
+      return (
+        <EmailStackFrame
+          key={confirmation.id}
+          label={`${drafts.length} emails to send`}
+          action={
+            confirmation.actionable ? (
+              <ChatApprovalActions
+                busy={confirmationBusyId === confirmation.id}
+                confirmLabel="Send all"
+                onDecision={(decision) => onDecision(confirmation, decision)}
+              />
+            ) : (
+              <StatusTag tone={status.tone} indicator={status.indicator}>
+                {status.label}
+              </StatusTag>
+            )
+          }
+        >
+          {drafts.map((item) => (
+            <EmailStackRow
+              key={item.id}
+              subject={item.subject || "(no subject)"}
+              recipients={[item.to.join(", "), draftSendDetail(item)]
+                .filter(Boolean)
+                .join(" · ")}
+              attachmentCount={item.attachments.length}
+              status={{ label: "Draft", tone: "warning", indicator: "draft" }}
+              isOpen={openEmailDraftId === item.id}
+              onOpen={() => setOpenEmailDraftId(item.id)}
+            />
+          ))}
+        </EmailStackFrame>
       );
     return (
       <ChatApprovalCard
@@ -615,11 +675,8 @@ export function OperatorConversation({
                 detail: (
                   <ApprovalDetail
                     title={rowConfirmation.title}
-                    draft={approvalDraft(rowConfirmation)}
-                    onOpenDraft={() => {
-                      const draft = approvalDraft(rowConfirmation);
-                      if (draft) setOpenEmailDraftId(draft.id);
-                    }}
+                    drafts={approvalDrafts(rowConfirmation)}
+                    onOpenDraft={setOpenEmailDraftId}
                   />
                 ),
                 actions:
@@ -695,8 +752,8 @@ export function OperatorConversation({
                   emailDrafts={(emailDraftsByMessage?.[message.id] ?? []).filter(
                     // A draft whose send approval is in this turn shows as that approval.
                     (draft) =>
-                      !confirmations.some(
-                        (confirmation) => confirmation.emailDraftId === draft.id,
+                      !confirmations.some((confirmation) =>
+                        confirmation.emailDraftIds?.includes(draft.id),
                       ),
                   )}
                   openEmailDraftId={openEmailDraftId}

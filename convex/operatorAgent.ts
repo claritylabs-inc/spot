@@ -23,7 +23,6 @@ import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
 import { listTeamInbox, getTeamThreadDetails, linkTeamEmailThreadByOperator } from "./teamInbox";
 import { searchTeamInbox } from "./lib/teamInboxProjection";
-import { reviseTeamReplySuggestion } from "./lib/teamReplySuggestions";
 import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
@@ -303,6 +302,7 @@ const ACTIVE_RUN_STATUSES = new Set([
   "waiting_confirmation",
 ]);
 const MAX_OPERATOR_MESSAGE_CHARS = 20_000;
+const MAX_BATCH_EMAIL_SUMMARY_CHARS = 15_000;
 const MAX_OPERATOR_CONVERSATION_KEY_CHARS = 500;
 const MAX_OPERATOR_DEDUPE_KEY_CHARS = 500;
 
@@ -410,12 +410,14 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "reply_email_thread",
   "reply_procurement_email_thread",
   "send_procurement_client_email",
+  "update_team_reply_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
   "attach_client_file_to_draft",
   "list_email_drafts",
   "send_email_draft",
+  "send_email_drafts",
   "cancel_email_draft",
 ]);
 
@@ -719,6 +721,23 @@ async function operatorConfirmationSummary(
       draftId: input.draftId,
     });
     return boundedDisplayText(summary, OPERATOR_EMAIL_SEND_SUMMARY_LIMIT, true);
+  }
+  if (toolName === "send_email_drafts") {
+    // Every email is shown in full, so the approval stays exact for each draft.
+    const draftIds = input.draftIds as string[];
+    const summaries: string[] = [];
+    for (const [index, draftId] of draftIds.entries()) {
+      const { summary } = await operatorEmailSendConfirmation(ctx, {
+        operatorUserId: context.operatorUserId,
+        threadId: context.threadId,
+        draftId,
+      });
+      summaries.push(`Email ${index + 1} of ${draftIds.length}\n${summary}`);
+    }
+    const summary = summaries.join("\n\n---\n\n");
+    if (summary.length > MAX_BATCH_EMAIL_SUMMARY_CHARS)
+      throw new Error("These emails are too long to approve together. Send fewer drafts at once.");
+    return summary;
   }
   if (toolName !== "update_broker_network_profile") {
     return operatorDisplaySummary(
@@ -2921,14 +2940,6 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,
       requestId: input.procurementRequestId ? normalizeProcurementRequestId(ctx, input.procurementRequestId) : undefined,
       category: procurementEmailCategory(input.category),
-    });
-  }
-
-  if (toolName === "update_team_reply_draft") {
-    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.update_team_reply_draft.inputSchema.parse(input);
-    return await reviseTeamReplySuggestion(ctx, {
-      threadId: await normalizeProcurementEmailThreadId(ctx, parsed.teamEmailThreadId),
-      reply: parsed.reply,
     });
   }
 
@@ -5270,15 +5281,30 @@ function toolIntegrations(names: string[]) {
   return integrations;
 }
 
-/** The agent draft a `send_email_draft` approval would send, so the chat can open it in the composer. */
-function confirmationEmailDraftId(payload: {
-  toolName: string;
-  input: string;
-}) {
-  if (payload.toolName !== "send_email_draft") return undefined;
+/** Each draft's send fingerprint, keyed by draft ID, for one batch send approval. */
+async function sendDraftFingerprints(
+  ctx: MutationCtx,
+  threadId: Id<"operatorAgentThreads">,
+  draftIds: unknown,
+) {
+  const fingerprints: Record<string, string> = {};
+  for (const draftId of draftIds as string[])
+    fingerprints[draftId] = (
+      await operatorEmailSendConfirmation(ctx, { threadId, draftId })
+    ).fingerprint;
+  return fingerprints;
+}
+
+/** The agent drafts a send approval would send, so the chat can show and open them. */
+function confirmationEmailDraftIds(payload: { toolName: string; input: string }) {
+  if (payload.toolName !== "send_email_draft" && payload.toolName !== "send_email_drafts")
+    return undefined;
   try {
-    const { draftId } = JSON.parse(payload.input) as { draftId?: unknown };
-    return typeof draftId === "string" ? draftId : undefined;
+    const input = JSON.parse(payload.input) as { draftId?: unknown; draftIds?: unknown };
+    const ids = payload.toolName === "send_email_draft" ? [input.draftId] : input.draftIds;
+    return Array.isArray(ids) && ids.every((id) => typeof id === "string")
+      ? (ids as string[])
+      : undefined;
   } catch {
     return undefined;
   }
@@ -5399,7 +5425,7 @@ export const getThread = query({
             state: operatorConfirmationDisplayState(confirmation),
             actionable,
             expiresAt: confirmation.expiresAt,
-            emailDraftId: confirmationEmailDraftId(confirmation.payload),
+            emailDraftIds: confirmationEmailDraftIds(confirmation.payload),
           };
         }),
     };
@@ -7820,6 +7846,11 @@ export const requestToolConfirmationInternal = internalMutation({
     );
     const automatic =
       (await getOperatorAgentSettings(ctx))?.approveAll === true;
+    // A batch send approves each draft as it is now; each send rechecks its own.
+    const draftFingerprints =
+      args.toolName === "send_email_drafts"
+        ? await sendDraftFingerprints(ctx, args.threadId, input.draftIds)
+        : undefined;
     const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
       threadId: args.threadId,
       operatorUserId: args.operatorUserId,
@@ -7832,7 +7863,9 @@ export const requestToolConfirmationInternal = internalMutation({
         input: inputJson,
         inputHash: args.inputHash,
         sourceFingerprint:
-          args.toolName === "send_email_draft"
+          draftFingerprints
+            ? await actionConfirmationFingerprint(draftFingerprints)
+            : args.toolName === "send_email_draft"
             ? (
                 await operatorEmailSendConfirmation(ctx, {
                   operatorUserId: args.operatorUserId,
@@ -7853,6 +7886,7 @@ export const requestToolConfirmationInternal = internalMutation({
                 }),
               )
             : undefined,
+        sourceFingerprints: draftFingerprints,
         idempotencyKey: args.idempotencyKey,
         capability: spec.capability,
         effect: spec.effect,
