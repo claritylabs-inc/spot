@@ -20,6 +20,7 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import type { PageContext } from "@/hooks/use-page-context";
 import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
@@ -27,27 +28,46 @@ import {
 import { typeStyle } from "@/lib/typography";
 import { OperatorCertificatesWorkspace } from "../certificates/operator-certificates-workspace";
 
-function compliancePageContextSummary(
+function compliancePageContext(
+  clientOrgId: string,
   clientName: string,
   state: ComplianceContextState,
-) {
+): PageContext {
   const requirement = state.selectedRequirement;
   const source = state.selectedSource;
   const scope = state.scope === "vendors" ? "vendor" : "own";
-  return pageContextSummary([
-    requirement &&
-      `Open requirement “${requirement.title.slice(0, 120)}” (requirementId ${requirement.id}${requirement.lineOfBusiness ? `, ${requirement.lineOfBusiness}` : ""}, ${requirement.status}${requirement.sourceId ? `, source ${requirement.sourceId}` : ""})`,
-    source &&
-      `Open requirement source “${source.title.slice(0, 120)}” (sourceId ${source.id}${source.holderName ? `, holder ${source.holderName.slice(0, 80)}` : ""}${source.requirementCount === undefined ? "" : `, ${source.requirementCount} requirements`})`,
-    state.certificateSourceId &&
-      `certificate drawer open for source ${state.certificateSourceId}`,
-    `Compliance for ${clientName}`,
-    state.view === "sources"
-      ? `Sources tab${state.sourceCount === undefined ? "" : `, ${state.sourceCount} sources`}`
-      : `${scope} requirements${state.requirementCount === undefined ? "" : `, ${state.requirementCount} shown`}`,
-    state.creationDrawer === "import" && "import requirements drawer open",
-    state.creationDrawer === "manual" && "add requirement drawer open",
-  ]);
+  const related: NonNullable<PageContext["related"]> = [];
+  if (requirement) {
+    related.push({
+      kind: "requirement",
+      id: requirement.id,
+      label: requirement.title,
+    });
+    if (requirement.sourceId)
+      related.push({ kind: "requirement_source", id: requirement.sourceId });
+  }
+  if (source)
+    related.push({ kind: "requirement_source", id: source.id, label: source.title });
+  if (state.certificateSourceId && state.certificateSourceId !== source?.id)
+    related.push({ kind: "requirement_source", id: state.certificateSourceId });
+  return {
+    pageType: "operator_client_compliance",
+    entityId: clientOrgId,
+    summary: pageContextSummary([
+      requirement &&
+        `Open requirement “${requirement.title.slice(0, 120)}” (${requirement.lineOfBusiness ? `${requirement.lineOfBusiness}, ` : ""}${requirement.status})`,
+      source &&
+        `Open requirement source “${source.title.slice(0, 120)}”${source.holderName ? `, holder ${source.holderName.slice(0, 80)}` : ""}${source.requirementCount === undefined ? "" : `, ${source.requirementCount} requirements`}`,
+      state.certificateSourceId && "certificate drawer open",
+      `Compliance for ${clientName}`,
+      state.view === "sources"
+        ? `Sources tab${state.sourceCount === undefined ? "" : `, ${state.sourceCount} sources`}`
+        : `${scope} requirements${state.requirementCount === undefined ? "" : `, ${state.requirementCount} shown`}`,
+      state.creationDrawer === "import" && "import requirements drawer open",
+      state.creationDrawer === "manual" && "add requirement drawer open",
+    ]),
+    ...(related.length > 0 ? { related } : {}),
+  };
 }
 
 export default function OperatorClientCompliancePage() {
@@ -114,11 +134,9 @@ export default function OperatorClientCompliancePage() {
         role: "admin",
         featureFlags: client.featureFlags,
       }}
-      pageContext={(state) => ({
-        pageType: "operator_client_compliance",
-        entityId: client._id,
-        summary: compliancePageContextSummary(clientContextName(client), state),
-      })}
+      pageContext={(state) =>
+        compliancePageContext(client._id, clientContextName(client), state)
+      }
       renderCertificatesTab={({
         onActions,
         onRightPanel,

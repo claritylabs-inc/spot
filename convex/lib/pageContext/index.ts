@@ -1,3 +1,4 @@
+import { clientPageContexts } from "./client";
 import { emailPageContexts } from "./email";
 import { procurementPageContexts } from "./procurement";
 import type { OperatorPageContextEntry } from "./types";
@@ -8,6 +9,7 @@ export type { OperatorPageContextEntry } from "./types";
 export const OPERATOR_PAGE_CONTEXTS: readonly OperatorPageContextEntry[] = [
   ...emailPageContexts,
   ...procurementPageContexts,
+  ...clientPageContexts,
 ];
 
 export function operatorPageContextEntry(pageType: string) {
