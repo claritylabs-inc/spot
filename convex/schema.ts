@@ -5,6 +5,10 @@ import {
 } from "./lib/operatorNotificationTypes";
 import { clientAccessStatusValidator } from "./lib/clientAccess";
 import {
+  pdfFormFieldValidator,
+  pdfFormModeValidator,
+} from "./lib/pdfFormFields";
+import {
   informationScopeValidator,
   informationRequirementStatus,
   informationResponseValidator,
@@ -5182,6 +5186,56 @@ export default defineSchema({
     tools: v.array(v.object({ name: v.string(), outputJson: v.string() })),
     expiresAt: v.number(),
   }).index("message", ["messageId"]),
+
+  /**
+   * A filled PDF form: the original, its current field records and filing.
+   * Refilling the same original for the same client, request and provider
+   * continues it; the editor regenerates `outputFileId` from the original.
+   */
+  pdfFormFills: defineTable({
+    operatorUserId: v.id("users"),
+    /** Conversation of the latest autofill. */
+    threadId: v.id("operatorAgentThreads"),
+    sourceFileId: v.id("_storage"),
+    sourceFilename: v.string(),
+    outputFileId: v.id("_storage"),
+    outputFilename: v.string(),
+    mode: pdfFormModeValidator,
+    pageCount: v.number(),
+    fields: v.array(pdfFormFieldValidator),
+    /** Client, procurement request and provider each version is filed under. */
+    clientOrgId: v.optional(v.id("organizations")),
+    requestId: v.optional(v.id("procurementRequests")),
+    brokerOrgId: v.optional(v.id("organizations")),
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
+    /** Set when the source is a provider's default application form. */
+    submissionDefaultId: v.optional(v.id("providerSubmissionDefaults")),
+    coverageCode: v.optional(v.string()),
+    /** The request file item that always points at the latest version. */
+    fileItemId: v.optional(v.id("procurementFileItems")),
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedByUserId: v.optional(v.id("users")),
+  })
+    .index("by_outputFileId", ["outputFileId"])
+    .index("by_sourceFileId", ["sourceFileId"])
+    .index("by_clientOrgId", ["clientOrgId"]),
+
+  /** One saved copy of a filled form; versions only grow. */
+  pdfFormFillVersions: defineTable({
+    fillId: v.id("pdfFormFills"),
+    version: v.number(),
+    fileId: v.id("_storage"),
+    filename: v.string(),
+    /** The hidden client file; archived once a newer version is filed. */
+    clientFileId: v.optional(v.id("clientFiles")),
+    source: v.union(v.literal("autofill"), v.literal("edit")),
+    createdAt: v.number(),
+    createdByUserId: v.id("users"),
+  })
+    .index("by_fileId", ["fileId"])
+    .index("by_fillId_and_version", ["fillId", "version"]),
 
   operatorAgentAttachments: defineTable({
     fileId: v.id("_storage"),

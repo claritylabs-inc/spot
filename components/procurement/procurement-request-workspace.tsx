@@ -2450,7 +2450,11 @@ export function ProcurementRequestWorkspace({
                 /\.pdf$/i.test(file.name)
               ) {
                 onRightPanel(null);
-                openWithUrl(file.url);
+                openWithUrl(file.url, undefined, undefined, {
+                  kind: "clientFile",
+                  clientFileId: file._id,
+                  filename: file.name,
+                });
               } else {
                 setPanel({ kind: "image", fileItemId: fileItem._id });
               }

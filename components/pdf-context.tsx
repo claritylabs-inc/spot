@@ -10,7 +10,11 @@ import {
 
 import { useFollowedState } from "@/hooks/use-followed-state";
 import type { PdfHighlightBox } from "@claritylabs-inc/ui/components/pdf-viewer";
+import type { PdfFormSource } from "@/convex/lib/pdfFormSource";
 export type { PdfHighlightBox } from "@claritylabs-inc/ui/components/pdf-viewer";
+
+/** The stored file behind the open PDF, so the agent panel can work on it. */
+export type PdfDocumentSource = PdfFormSource & { filename: string };
 
 interface PdfContextValue {
   currentPage: number;
@@ -26,11 +30,13 @@ interface PdfContextValue {
   setFileUrl: (url: string) => void;
   highlightedPage: number | null;
   highlightBoxes: PdfHighlightBox[];
+  source: PdfDocumentSource | null;
   /** Imperatively open a PDF by URL, optionally jumping to a page */
   openWithUrl: (
     url: string,
     page?: number,
     highlightBoxes?: PdfHighlightBox[],
+    source?: PdfDocumentSource,
   ) => void;
 }
 
@@ -69,6 +75,10 @@ export function PdfProvider({
   const [highlightBoxes, setHighlightBoxes] = useFollowedState<
     PdfHighlightBox[]
   >("shell:pdf:highlight-boxes", []);
+  const [source, setSource] = useFollowedState<PdfDocumentSource | null>(
+    "shell:pdf:source",
+    null,
+  );
   const [appliedResetKey, setAppliedResetKey] = useState(resetKey);
   if (appliedResetKey !== resetKey) {
     setAppliedResetKey(resetKey);
@@ -78,11 +88,13 @@ export function PdfProvider({
     setNumPages(0);
     setHighlightedPage(null);
     setHighlightBoxes([]);
+    setSource(null);
   }
 
   const setFileUrl = useCallback((url: string) => {
     setFileUrlState(url);
-  }, [setFileUrlState]);
+    setSource(null);
+  }, [setFileUrlState, setSource]);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -104,12 +116,18 @@ export function PdfProvider({
   );
 
   const openWithUrl = useCallback(
-    (url: string, page?: number, boxes?: PdfHighlightBox[]) => {
+    (
+      url: string,
+      page?: number,
+      boxes?: PdfHighlightBox[],
+      documentSource?: PdfDocumentSource,
+    ) => {
       setFileUrlState(url);
       setIsPdfOpen(true);
       setCurrentPage(page ?? 1);
       setHighlightedPage(page ?? null);
       setHighlightBoxes(boxes ?? []);
+      setSource(documentSource ?? null);
       setNumPages(0);
     },
     [
@@ -118,6 +136,7 @@ export function PdfProvider({
       setHighlightBoxes,
       setHighlightedPage,
       setIsPdfOpen,
+      setSource,
     ],
   );
 
@@ -142,6 +161,7 @@ export function PdfProvider({
       setFileUrl,
       highlightedPage,
       highlightBoxes,
+      source,
       openWithUrl,
     }),
     [
@@ -157,6 +177,7 @@ export function PdfProvider({
       setFileUrl,
       highlightedPage,
       highlightBoxes,
+      source,
       openWithUrl,
     ],
   );
@@ -177,6 +198,7 @@ const NOOP_PDF: PdfContextValue = {
   setFileUrl: () => {},
   highlightedPage: null,
   highlightBoxes: [],
+  source: null,
   openWithUrl: () => {},
 };
 

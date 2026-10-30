@@ -4,6 +4,7 @@ import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { FileInput } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@claritylabs-inc/ui/components/popover";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
+import type { PdfDocumentSource } from "@/components/pdf-context";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AttachmentSubmissionForm } from "./attachment-submission-form";
 
@@ -17,6 +18,30 @@ type Provider = {
   brokerName?: string;
   coverageCodes?: string[];
 };
+
+function emailAttachmentPdfSource(
+  messageId: Id<"teamEmailMessages">,
+  file: {
+    name: string;
+    clientFileId?: Id<"clientFiles">;
+    storageId?: Id<"_storage">;
+  },
+): PdfDocumentSource | undefined {
+  if (file.clientFileId)
+    return {
+      kind: "clientFile",
+      clientFileId: file.clientFileId,
+      filename: file.name,
+    };
+  if (file.storageId)
+    return {
+      kind: "teamEmailAttachment",
+      messageId,
+      storageId: file.storageId,
+      filename: file.name,
+    };
+  return undefined;
+}
 
 /** The save button and right-click both open the default application form popover. */
 export function EmailSubmissionAttachment({
@@ -50,6 +75,7 @@ export function EmailSubmissionAttachment({
         <ChatAttachmentChip
           attachment={{ filename: file.name, contentType: file.contentType }}
           url={file.url}
+          pdfSource={emailAttachmentPdfSource(source.messageId, file)}
           action={{
             label: `Use ${file.name} as default application form`,
             icon: FileInput,

@@ -1,8 +1,15 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { useEffect } from "react";
 import { usePdf } from "@/components/pdf-context";
 import { PdfViewer } from "@/components/ui/pdf-viewer";
+import {
+  PDF_DOCUMENT_PAGE_TYPE,
+  pdfFormSourceId,
+} from "@/convex/lib/pdfFormSource";
+import { usePageContext } from "@/hooks/use-page-context";
+import { usePdfFormEditing } from "@/components/ui/pdf-form-editing";
 
 const EASE = [0.2, 0, 0, 1] as const;
 export function PdfPanel() {
@@ -15,8 +22,28 @@ export function PdfPanel() {
     setNumPages,
     highlightedPage,
     highlightBoxes,
+    source,
+    openWithUrl,
   } = usePdf();
   const reduceMotion = useReducedMotion();
+  // The agent panel works on the open PDF (e.g. filling a form) while it is shown.
+  const { pushPageContext } = usePageContext();
+  const open = Boolean(fileUrl && isPdfOpen);
+  const sourceId = source ? pdfFormSourceId(source) : null;
+  const filename = source?.filename;
+  useEffect(() => {
+    if (!open || !sourceId) return;
+    return pushPageContext({
+      pageType: PDF_DOCUMENT_PAGE_TYPE,
+      entityId: sourceId,
+      summary: `PDF: ${filename?.slice(0, 200) ?? "document"}`,
+    });
+  }, [filename, open, pushPageContext, sourceId]);
+  const formEditing = usePdfFormEditing({
+    source,
+    onSaved: (saved) =>
+      openWithUrl(saved.url, currentPage, undefined, saved.source),
+  });
 
   if (!fileUrl || !isPdfOpen) return null;
 
@@ -36,7 +63,14 @@ export function PdfPanel() {
           onPageChange={navigateToPage}
           onDocumentLoad={setNumPages}
           onClose={closePdf}
+          {...(formEditing.active
+            ? {
+                toolbarActions: formEditing.toolbarActions,
+                ...formEditing.viewerProps,
+              }
+            : {})}
         />
+        {formEditing.active ? formEditing.footer : null}
       </motion.div>
     </div>
   );

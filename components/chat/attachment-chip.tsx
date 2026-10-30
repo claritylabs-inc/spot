@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { Loader2, Paperclip, type LucideIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { usePdf } from "@/components/pdf-context";
+import { usePdf, type PdfDocumentSource } from "@/components/pdf-context";
 import {
   followedContentKey,
   useFollowedState,
@@ -20,6 +20,8 @@ export type ChatAttachmentChipProps = {
   /** Resolves through the operator agent API instead of the tenant thread. */
   operatorThreadId?: string;
   url?: string | null;
+  /** Stored file behind the PDF, so the agent panel can work on it once open. */
+  pdfSource?: PdfDocumentSource;
   className?: string;
   size?: "default" | "compact";
   onOpen?: () => void;
@@ -45,6 +47,7 @@ export function ChatAttachmentChip({
   threadId,
   operatorThreadId,
   url,
+  pdfSource,
   className,
   size = "default",
   onOpen,
@@ -71,7 +74,20 @@ export function ChatAttachmentChip({
     attachment.contentType?.toLowerCase().includes("pdf") ||
     attachment.filename.toLowerCase().endsWith(".pdf");
   const isCompact = size === "compact";
-  const handleOpen = onOpen ?? (isPdf && resolvedUrl ? () => openWithUrl(resolvedUrl) : undefined);
+  const source =
+    pdfSource ??
+    (operatorThreadId && attachment.fileId
+      ? {
+          kind: "operatorAttachment" as const,
+          fileId: attachment.fileId,
+          filename: attachment.filename,
+        }
+      : undefined);
+  const handleOpen =
+    onOpen ??
+    (isPdf && resolvedUrl
+      ? () => openWithUrl(resolvedUrl, undefined, undefined, source)
+      : undefined);
   const canOpen = Boolean(handleOpen || resolvedUrl);
   const iconClass = cn("shrink-0 text-muted-foreground", isCompact ? "h-2.5 w-2.5" : "h-3 w-3");
 
