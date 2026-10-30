@@ -6,6 +6,11 @@ import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-pan
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { AppShell } from "@/components/app-shell";
+import {
+  OperatorPageContextRegistration,
+  operatorContextList,
+  operatorContextSummary,
+} from "@/components/operator-agent/operator-page-context";
 import { PresenceAvatars, resolveAppBreadcrumb } from "@/components/app-top-bar";
 import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { PillButton } from "@/components/ui/pill-button";
@@ -34,9 +39,51 @@ export default function OperatorTeamPage() {
   const selfId = sessions?.find((session) => session.self)?.userId;
   const others = (sessions ?? []).filter((session) => !session.self);
   const names = new Map(others.map((session) => [session.userId, session.name]));
+  const pageSummary = operatorContextSummary(
+    "Teammates online",
+    sessions &&
+      (others.length
+        ? operatorContextList(
+            others.map((session) =>
+              [
+                `${session.name} on ${resolveAppBreadcrumb(session.pathname).label ?? session.pathname}`,
+                session.email &&
+                  `${session.email.activity === "replying" ? "replying to" : "viewing"} email "${session.email.subject || "(no subject)"}"`,
+              ]
+                .filter(Boolean)
+                .join(", "),
+            ),
+          )
+        : "none"),
+  );
 
   return (
     <AppShell>
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_team",
+          summary: pageSummary,
+          // Open emails first: the context keeps the first ten records.
+          related: [
+            ...others.flatMap((session) =>
+              session.email
+                ? [
+                    {
+                      kind: "team_email_thread",
+                      id: session.email.id,
+                      label: session.email.subject || "(no subject)",
+                    },
+                  ]
+                : [],
+            ),
+            ...others.map((session) => ({
+              kind: "user",
+              id: session.userId,
+              label: session.name,
+            })),
+          ],
+        }}
+      />
       {sessions === undefined ? null : others.length === 0 ? (
         <EmptyStateCard
           icon={<UsersRound className="size-6" />}

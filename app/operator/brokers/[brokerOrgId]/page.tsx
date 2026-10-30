@@ -12,6 +12,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { AppShellPortal } from "@/components/app-shell-slots";
+import {
+  OperatorPageContextRegistration,
+  operatorContextSummary,
+} from "@/components/operator-agent/operator-page-context";
 import { ProviderContacts } from "@/components/broker-network/provider-contacts";
 import { ProviderSubmissionDefaults } from "@/components/broker-network/provider-submission-defaults";
 import { BrokerActivity } from "@/components/broker-network/broker-activity";
@@ -57,6 +61,14 @@ import {
 } from "../broker-model";
 
 type BrokerRow = NonNullable<FunctionReturnType<typeof api.brokerProfiles.get>>;
+
+const TAB_LABELS: Record<string, string> = {
+  profile: "Profile",
+  appetite: "Appetite",
+  contacts: "Contacts",
+  "submission-defaults": "Submission defaults",
+  activity: "Activity",
+};
 
 export default function OperatorBrokerPage() {
   const { brokerOrgId } = useParams<{ brokerOrgId: string }>();
@@ -197,6 +209,19 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
       <AppShellPortal slot="actions">
         <AutoSaveStatus status={autoSave.status} />
       </AppShellPortal>
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_broker",
+          entityId: row.broker._id,
+          summary: operatorContextSummary(
+            `Insurance provider ${saved.name}`,
+            saved.website,
+            NETWORK_STATUS_LABELS[saved.status],
+            saved.isTest && "test provider",
+            `${TAB_LABELS[tab] ?? tab} tab`,
+          ),
+        }}
+      />
       <PageTabs value={tab} onValueChange={setTab}>
         <PageTabsList aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>

@@ -22,6 +22,11 @@ export const operatorSuggestionPageContextValidator = v.object({
   entityId: v.optional(v.string()),
   summary: v.optional(v.string()),
   href: v.optional(v.string()),
+  related: v.optional(
+    v.array(
+      v.object({ kind: v.string(), id: v.string(), label: v.optional(v.string()) }),
+    ),
+  ),
 });
 
 const RANKING_TTL_MINUTES = 10;

@@ -101,6 +101,11 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import {
+  usePageContextLayer,
+  type PageContext,
+} from "@/hooks/use-page-context";
+import { contextSummary, relatedRecords } from "@/lib/policy-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 
 type RequirementScope = "vendors" | "own_org";
@@ -167,10 +172,30 @@ export type ComplianceCertificatesTabArgs = {
   onRightPanel: (panel: ReactNode) => void;
 };
 
+/**
+ * What the compliance workspace shows, for an agent page context. An open
+ * requirement or source drawer layers its own `requirement` /
+ * `requirement_source` context over this one.
+ */
+export type ComplianceContextState = {
+  view: Exclude<ComplianceView, "certificates">;
+  scope: RequirementScope;
+  requirementCount?: number;
+  /** The shown requirements by saved status, e.g. `3 not met, 9 met`. */
+  statusCounts?: string;
+  sourceCount?: number;
+  creationDrawer: "import" | "manual" | null;
+};
+
 export type CompliancePageProps = {
   orgContext?: ComplianceWorkspaceOrgContext;
   renderShell?: (args: ComplianceWorkspaceShellArgs) => ReactNode;
   renderCertificatesTab?: (args: ComplianceCertificatesTabArgs) => ReactNode;
+  /**
+   * Builds the agent page context layered over the page's. The certificates
+   * tab sets its own.
+   */
+  pageContext?: (state: ComplianceContextState) => PageContext | null;
 };
 
 type ComplianceSurface = "customer" | "operator";
@@ -614,6 +639,104 @@ function matchedPolicyIdsForRequirement(requirement: Requirement) {
       ].filter((id): id is Id<"policies"> => Boolean(id)),
     ),
   );
+}
+
+const CONTEXT_STATUS_ORDER: StatusFilter[] = [
+  "not_met",
+  "expired",
+  "expiring_soon",
+  "unverified",
+  "met",
+  "defined",
+];
+
+/** Counts by saved status, e.g. `3 not met, 9 met`. */
+function requirementStatusCounts(requirements: Requirement[]) {
+  const counts = new Map<StatusFilter, number>();
+  for (const requirement of requirements) {
+    const status = statusFilterValue(requirement);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  const parts = CONTEXT_STATUS_ORDER.filter((status) => counts.has(status)).map(
+    (status) =>
+      `${counts.get(status)} ${status === "defined" ? "unchecked" : statusFilterLabel(status).toLowerCase()}`,
+  );
+  return parts.join(", ") || undefined;
+}
+
+function requirementContextSummary(
+  requirement: Requirement,
+  generating: boolean,
+) {
+  const check = requirement.complianceCheck;
+  return contextSummary([
+    `Requirement: ${requirement.title}`,
+    requirement.scope === "vendors" ? "vendor requirement" : undefined,
+    lineDisplayLabel(requirement.lineOfBusiness),
+    (requirement.limits ?? [])
+      .slice(0, 3)
+      .map((limit) => limit.label || `${limitKindLabel(limit.kind)} ${limit.amount}`)
+      .join(", "),
+    [
+      statusMeta(check?.status).label,
+      check?.matchedPolicy?.policyNumber
+        ? `by policy ${check.matchedPolicy.policyNumber}`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    requirement.sourceDocumentName
+      ? `from ${requirement.sourceDocumentName}`
+      : undefined,
+    generating ? "generating a certificate" : undefined,
+  ]);
+}
+
+/**
+ * The requirement itself (its title narrows the agent's lookup), then its
+ * client, source and matched policies.
+ */
+function requirementContextRelated(requirement: Requirement) {
+  const matched = requirement.complianceCheck?.matchedPolicy;
+  return relatedRecords([
+    { kind: "requirement", id: requirement._id, label: requirement.title },
+    { kind: "organization", id: requirement.orgId },
+    {
+      kind: "requirement_source",
+      id: requirement.sourceDocumentId,
+      label: requirement.sourceDocumentName,
+    },
+    ...matchedPolicyIdsForRequirement(requirement)
+      .slice(0, 3)
+      .map((id) => ({
+        kind: "policy",
+        id,
+        label:
+          id === matched?._id && matched.policyNumber
+            ? `Policy ${matched.policyNumber}`
+            : undefined,
+      })),
+  ]);
+}
+
+function requirementSourceContextSummary(
+  source: RequirementSource,
+  generating: boolean,
+) {
+  return contextSummary([
+    `Requirement source: ${source.title}`,
+    source.sourceType.replaceAll("_", " "),
+    source.holder?.displayName
+      ? `holder ${source.holder.displayName}`
+      : undefined,
+    `${source.requirementCount} requirement${source.requirementCount === 1 ? "" : "s"}`,
+    source.status === "running"
+      ? "extracting requirements"
+      : source.status === "error"
+        ? "requirement extraction failed"
+        : undefined,
+    generating ? "generating a certificate" : undefined,
+  ]);
 }
 
 function PolicyTagList({
@@ -2320,6 +2443,7 @@ function ComplianceWorkspace({
   orgContext,
   renderShell,
   renderCertificatesTab,
+  pageContext,
   surface,
 }: CompliancePageProps & { surface: ComplianceSurface }) {
   const router = useRouter();
@@ -2694,6 +2818,22 @@ function ComplianceWorkspace({
         }
       : "skip",
   ) as SourceCertificate[] | undefined;
+  usePageContextLayer(
+    pageContext && view !== "certificates"
+      ? pageContext({
+          view,
+          scope: activeRequirementScope,
+          requirementCount:
+            requirements === undefined ? undefined : scopedRequirements.length,
+          statusCounts:
+            requirements === undefined
+              ? undefined
+              : requirementStatusCounts(scopedRequirements),
+          sourceCount: requirementSources?.length,
+          creationDrawer,
+        })
+      : null,
+  );
 
   useEffect(() => {
     if (!requestedRequirementId && !requestedSourceId) {
@@ -2764,6 +2904,55 @@ function ComplianceWorkspace({
     setSelectedRequirementId,
     setSelectedSourceId,
   ]);
+
+  const operatorContextOrgId = surface === "operator" ? orgId : undefined;
+  // The record in the right panel, matching its precedence below: certificate
+  // generation, then the requirement drawer, then the source drawer.
+  const generatingForSource =
+    certificateSourceId &&
+    requirementSources?.find((source) => source._id === certificateSourceId);
+  const generatingForRequirement =
+    generatingForSource && certificateRequirementId
+      ? requirements?.find(
+          (requirement) => requirement._id === certificateRequirementId,
+        )
+      : undefined;
+  const focusedRequirement = certificateSourceId
+    ? generatingForRequirement
+    : selectedRequirement;
+  const focusedSource = certificateSourceId
+    ? generatingForSource
+    : !selectedRequirement && selectedSource;
+  const generating = Boolean(certificateSourceId);
+  usePageContextLayer(
+    !operatorContextOrgId || view === "certificates"
+      ? null
+      : focusedRequirement
+        ? {
+            pageType: "requirement",
+            entityId: focusedRequirement._id,
+            summary: requirementContextSummary(focusedRequirement, generating),
+            related: requirementContextRelated(focusedRequirement),
+          }
+        : focusedSource
+          ? {
+              pageType: "requirement_source",
+              entityId: focusedSource._id,
+              summary: requirementSourceContextSummary(
+                focusedSource,
+                generating,
+              ),
+              related: relatedRecords([
+                {
+                  kind: "requirement_source",
+                  id: focusedSource._id,
+                  label: focusedSource.title,
+                },
+                { kind: "organization", id: focusedSource.orgId },
+              ]),
+            }
+          : null,
+  );
 
   if (isBroker) return null;
 

@@ -6,8 +6,13 @@ import { Loader2 } from "lucide-react";
 import {
   OperatorComplianceWorkspace,
   type ComplianceCertificatesTabArgs,
+  type ComplianceContextState,
   type ComplianceWorkspaceShellArgs,
 } from "@/components/compliance-page";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import { AppShell } from "@/components/app-shell";
 import {
   OperationalPanel,
@@ -15,12 +20,33 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import type { PageContext } from "@/hooks/use-page-context";
 import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { OperatorCertificatesWorkspace } from "../certificates/operator-certificates-workspace";
+
+function compliancePageContext(
+  clientOrgId: string,
+  clientName: string,
+  state: ComplianceContextState,
+): PageContext {
+  const scope = state.scope === "vendors" ? "vendor" : "own";
+  return {
+    pageType: "operator_client_compliance",
+    entityId: clientOrgId,
+    summary: pageContextSummary([
+      `Compliance for ${clientName}`,
+      state.view === "sources"
+        ? `Sources tab${state.sourceCount === undefined ? "" : `, ${state.sourceCount} sources`}`
+        : `${scope} requirements${state.requirementCount === undefined ? "" : `, ${state.requirementCount} shown`}${state.statusCounts ? ` (${state.statusCounts})` : ""}`,
+      state.creationDrawer === "import" && "import requirements drawer open",
+      state.creationDrawer === "manual" && "add requirement drawer open",
+    ]),
+  };
+}
 
 export default function OperatorClientCompliancePage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
@@ -86,6 +112,9 @@ export default function OperatorClientCompliancePage() {
         role: "admin",
         featureFlags: client.featureFlags,
       }}
+      pageContext={(state) =>
+        compliancePageContext(client._id, clientContextName(client), state)
+      }
       renderCertificatesTab={({
         onActions,
         onRightPanel,

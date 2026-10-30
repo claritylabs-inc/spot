@@ -1,0 +1,175 @@
+// Failure modes: a policy, requirement or certificate page prefetching another
+// record or the client's whole library; a coverage read without the client;
+// status-only reads framed as if coverages were loaded; a running or failed
+// extraction reported as final; a requirement's status read from the wrong row;
+// a requirement page without its title reading every requirement.
+import { expect, test } from "vitest";
+import type { OperatorAgentToolName } from "../operatorAgentToolRegistry";
+import { operatorPageContextEntry } from ".";
+import { policyStatusHints, requirementHints } from "./policy";
+
+const page = (
+  pageType: string,
+  entityId: string,
+  summary: string,
+  related: Array<{ kind: string; id: string; label?: string }>,
+) => ({
+  pageType,
+  entityId,
+  summary,
+  related,
+});
+
+function inputs(
+  pageType: string,
+  context: ReturnType<typeof page>,
+  results = new Map<OperatorAgentToolName, unknown>(),
+) {
+  return operatorPageContextEntry(pageType)!.prefetch.map((stage) =>
+    stage.map((read) => [
+      read.toolName,
+      read.input({
+        focus: { entityId: context.entityId },
+        results,
+        page: context,
+        relatedId: (kind) =>
+          context.related.find((entry) => entry.kind === kind)?.id,
+        relatedLabel: (kind) =>
+          context.related.find((entry) => entry.kind === kind)?.label,
+      }),
+    ]),
+  );
+}
+
+test("policy group pages read the attached record with the client from the page", () => {
+  const org = { kind: "organization", id: "o1" };
+  expect(inputs("policy", page("policy", "p1", "Policy GL-1", [org]))).toEqual([
+    [
+      ["get_policy_status", { policyId: "p1" }],
+      ["lookup_policy", { orgId: "o1", policyIds: ["p1"] }],
+    ],
+    [["lookup_policy", undefined]],
+  ]);
+  // Without the client on the page, the status read supplies it.
+  expect(
+    inputs(
+      "policy",
+      page("policy", "p1", "Policy", []),
+      new Map([["get_policy_status", { orgId: "o2" }]]),
+    )[1],
+  ).toEqual([["lookup_policy", { orgId: "o2", policyIds: ["p1"] }]]);
+
+  expect(
+    inputs(
+      "requirement",
+      page("requirement", "r1", "Requirement: GL each occurrence · Not met", [
+        { kind: "requirement", id: "r1", label: "GL each occurrence" },
+        org,
+        { kind: "policy", id: "p9" },
+      ]),
+      new Map([
+        [
+          "lookup_compliance_requirements",
+          { requirements: [{ requirementId: "r1", matchedPolicyIds: ["p1", "p2"] }] },
+        ],
+      ]),
+    ),
+  ).toEqual([
+    [
+      [
+        "lookup_compliance_requirements",
+        { orgId: "o1", scope: "all", query: "GL each occurrence" },
+      ],
+    ],
+    [["lookup_policy", { orgId: "o1", policyIds: ["p1", "p2"] }]],
+  ]);
+  // Without the page's own title, the lookup is skipped, not run unscoped;
+  // matched policies then come from the page.
+  expect(
+    inputs(
+      "requirement",
+      page("requirement", "r1", "Requirement: GL", [
+        org,
+        { kind: "policy", id: "p9" },
+      ]),
+    ),
+  ).toEqual([
+    [["lookup_compliance_requirements", undefined]],
+    [["lookup_policy", { orgId: "o1", policyIds: ["p9"] }]],
+  ]);
+  expect(
+    inputs(
+      "requirement_source",
+      page("requirement_source", "s1", "Requirement source: Lease", [
+        { kind: "requirement_source", id: "s1", label: "Lease" },
+        org,
+      ]),
+    ),
+  ).toEqual([
+    [
+      [
+        "lookup_compliance_requirements",
+        { orgId: "o1", scope: "all", query: "Lease" },
+      ],
+    ],
+  ]);
+  expect(
+    inputs(
+      "certificate",
+      page("certificate", "c1", "Certificate for City", [
+        org,
+        { kind: "policy", id: "p1" },
+      ]),
+    ),
+  ).toEqual([[["lookup_policy", { orgId: "o1", policyIds: ["p1"] }]]]);
+  expect(operatorPageContextEntry("certificate")!.staticHints).toHaveLength(2);
+
+  expect(
+    policyStatusHints(
+      new Map([
+        [
+          "get_policy_status",
+          {
+            policyId: "p1",
+            orgId: "o1",
+            pipelineStatus: "complete",
+            extractionDataStage: "preview",
+            archived: true,
+          },
+        ],
+      ]),
+    ),
+  ).toEqual([
+    "Client organization (orgId for policy tools): o1",
+    "Extraction still running (stage preview); fields may be partial.",
+    "Archived policy.",
+    'Coverages were not loaded: call lookup_policy with orgId and policyIds ["p1"].',
+  ]);
+  expect(
+    requirementHints(
+      new Map<OperatorAgentToolName, unknown>([
+        [
+          "lookup_compliance_requirements",
+          {
+            requirements: [
+              { requirementId: "r0", currentComplianceStatus: "met" },
+              {
+                requirementId: "r1",
+                currentComplianceStatus: "not_met",
+                currentComplianceReasons: ["Limit below $2M"],
+                matchedPolicyIds: ["p1"],
+                requirementSourceDocumentId: "s1",
+              },
+            ],
+          },
+        ],
+        ["lookup_policy", [{}]],
+      ]),
+      page("requirement", "r1", "", []),
+    ),
+  ).toEqual([
+    "Saved compliance status: not met (Limit below $2M)",
+    "Matched policies: p1 (1 loaded with lookup_policy)",
+    "Requirement source (requirementSourceDocumentId for generate_coi): s1",
+  ]);
+});

@@ -10,13 +10,18 @@ export function OperatorPageContextRegistration({
   context: PageContext;
 }) {
   const { setPageContext } = usePageContext();
+  // Callers build `related` on every render; compare it by value.
+  const relatedKey = context.related ? JSON.stringify(context.related) : "";
   const stableContext = useMemo(
     () => ({
       pageType: context.pageType,
       entityId: context.entityId,
       summary: context.summary,
+      ...(relatedKey
+        ? { related: JSON.parse(relatedKey) as PageContext["related"] }
+        : {}),
     }),
-    [context.entityId, context.pageType, context.summary],
+    [context.entityId, context.pageType, context.summary, relatedKey],
   );
 
   useEffect(() => {
@@ -25,6 +30,26 @@ export function OperatorPageContextRegistration({
   }, [setPageContext, stableContext]);
 
   return null;
+}
+
+// normalizeOperatorPageContext rejects longer summaries.
+const MAX_SUMMARY_LENGTH = 500;
+
+/** Joins what the operator sees into one summary within the context bound. */
+export function operatorContextSummary(
+  ...parts: (string | false | null | undefined)[]
+) {
+  const summary = parts.filter(Boolean).join("; ");
+  return summary.length > MAX_SUMMARY_LENGTH
+    ? `${summary.slice(0, MAX_SUMMARY_LENGTH - 1)}…`
+    : summary;
+}
+
+/** Lists the first `max` values and counts the rest. */
+export function operatorContextList(values: readonly string[], max = 5) {
+  return values.length > max
+    ? `${values.slice(0, max).join(", ")} and ${values.length - max} more`
+    : values.join(", ");
 }
 
 export function operatorPageContextKey(context: PageContext) {
@@ -54,6 +79,24 @@ export function operatorPageContextFromPathname(
     };
   }
 
+  if (
+    segments[1] === "clients" &&
+    segments[2] &&
+    segments[3] === "procurement"
+  ) {
+    return segments[4]
+      ? {
+          pageType: "procurement_request",
+          entityId: segments[4],
+          summary: "Current procurement request",
+        }
+      : {
+          pageType: "operator_client_procurement",
+          entityId: segments[2],
+          summary: "Current client procurement",
+        };
+  }
+
   const clientSectionSummary: Record<string, string> = {
     policies: "Client policies",
     compliance: "Client compliance",
@@ -71,6 +114,14 @@ export function operatorPageContextFromPathname(
     };
   }
 
+  if (segments[1] === "brokers" && segments[2]) {
+    return {
+      pageType: "operator_broker",
+      entityId: segments[2],
+      summary: "Insurance provider profile",
+    };
+  }
+
   if (segments[1] === "policies" && segments[2]) {
     return {
       pageType: "policy",
@@ -80,17 +131,15 @@ export function operatorPageContextFromPathname(
   }
 
   const summaryByArea: Record<string, string> = {
+    audit: "Operator activity log",
     brokers: "Insurance providers",
     channels: "Agent channels",
     clients: "Client organizations",
-    compliance: "Client compliance",
-    policies: "Client policies",
+    inbox: "Shared team inbox",
     procurement: "Procurement requests across clients",
     profile: "Operator profile",
-    logs: "Model call logs",
-    usage: "Model usage",
-    routing: "Model routing",
-    telemetry: "System telemetry",
+    settings: "Operator settings",
+    team: "Teammates online",
   };
   const area = segments[1] ?? "clients";
 
@@ -121,6 +170,8 @@ export function operatorThreadContextHref(
     const section = clientSections[context.pageType];
     if (section !== undefined && context.entityId) {
       href = `/operator/clients/${encodeURIComponent(context.entityId)}${section}`;
+    } else if (context.pageType === "operator_broker" && context.entityId) {
+      href = `/operator/brokers/${encodeURIComponent(context.entityId)}`;
     } else if (!context.entityId && context.pageType.startsWith("operator_")) {
       href = `/operator/${context.pageType.slice("operator_".length).replaceAll("_", "-")}`;
     }
@@ -130,7 +181,7 @@ export function operatorThreadContextHref(
   }
   const url = new URL(href, "https://spot.invalid");
   if (
-    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|profile|routing|telemetry|logs|usage|settings)\/?$/.test(url.pathname)
+    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers(?:\/[^/]+)?|channels|procurement|profile|settings|audit|team|inbox)\/?$/.test(url.pathname)
   ) return null;
   url.searchParams.set("agentThread", threadId);
   return `${url.pathname}${url.search}${url.hash}`;

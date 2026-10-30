@@ -19,6 +19,11 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
+import {
+  OperatorPageContextRegistration,
+  operatorContextList,
+  operatorContextSummary,
+} from "@/components/operator-agent/operator-page-context";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { typeStyle } from "@/lib/typography";
@@ -206,6 +211,23 @@ export default function OperatorBrokersPage() {
     regions.length > 0 ||
     lines.length > 0 ||
     statuses.length > 0;
+  const selectedRows = (rows ?? []).filter((row) =>
+    selection.isSelected(row.broker._id),
+  );
+  const pageSummary = operatorContextSummary(
+    "Insurance providers",
+    statuses.length > 0 &&
+      `status ${operatorContextList(statuses.map((status) => NETWORK_STATUS_LABELS[status as NetworkStatus] ?? status))}`,
+    countries.length > 0 && `writing in ${operatorContextList(countries)}`,
+    regions.length > 0 && `serving ${operatorContextList(regions)}`,
+    lines.length > 0 && `lines ${operatorContextList(lines)}`,
+    filteredRows && rows && `${filteredRows.length} of ${rows.length} shown`,
+    selectedRows.length > 0 &&
+      `selected ${operatorContextList(
+        selectedRows.map((row) => row.broker.name),
+        3,
+      )}`,
+  );
   // Changing filters drops a selection the rows may no longer show.
   const filterSetter =
     (set: (value: string[]) => void) => (value: string[]) => {
@@ -230,6 +252,17 @@ export default function OperatorBrokersPage() {
         </PillButton>
       }
     >
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_brokers",
+          summary: pageSummary,
+          related: selectedRows.map((row) => ({
+            kind: "broker",
+            id: row.broker._id,
+            label: row.broker.name,
+          })),
+        }}
+      />
       <div className="@container/brokers space-y-4">
         <ListToolbar
           followKey="brokers:list"

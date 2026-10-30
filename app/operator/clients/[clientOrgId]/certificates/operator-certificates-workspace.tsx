@@ -25,10 +25,15 @@ import {
   TableRow,
   SortableTableHead,
 } from "@/components/ui/table";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
+import {
+  certificateContextRelated,
+  certificateContextSummary,
+} from "@/lib/policy-page-context";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -198,6 +203,20 @@ export function OperatorCertificatesWorkspace({
       setSavingCertificateId(null);
     }
   }, [generateCertificate]);
+
+  // The AI panel works on the open certificate while its panel is shown.
+  const contextCertificate =
+    generateOpen && !readOnly ? null : selectedCertificate;
+  usePageContextLayer(
+    contextCertificate
+      ? {
+          pageType: "certificate",
+          entityId: contextCertificate._id,
+          summary: certificateContextSummary(contextCertificate),
+          related: certificateContextRelated({ ...contextCertificate, orgId }),
+        }
+      : null,
+  );
 
   useEffect(() => {
     onActions(readOnly ? null : (

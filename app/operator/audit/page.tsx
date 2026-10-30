@@ -18,6 +18,12 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
+import type { PageContext } from "@/hooks/use-page-context";
+import {
+  OperatorPageContextRegistration,
+  operatorContextSummary,
+} from "@/components/operator-agent/operator-page-context";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { useFollowedState } from "@/hooks/use-followed-state";
@@ -102,6 +108,43 @@ function targetLink(entry: AuditEntry) {
   return null;
 }
 
+function auditEntryContext(entry: AuditEntry): PageContext {
+  return {
+    pageType: "operator_audit_entry",
+    entityId: entry.id,
+    summary: operatorContextSummary(
+      `Activity log entry: ${entry.title}`,
+      `${entry.actor?.name ?? "System"} via ${sourceLabel(entry)} at ${dayjs(entry.at).format("YYYY-MM-DD HH:mm:ss")}`,
+      entry.status && `status ${entry.status}`,
+      entry.org && `${entry.org.type ?? "organization"} ${entry.org.name}`,
+      entry.request && `procurement request ${entry.request.title}`,
+      entry.functionName && `function ${entry.functionName}`,
+      entry.error && `error: ${entry.error}`,
+    ),
+    related: [
+      ...(entry.org
+        ? [
+            {
+              kind: entry.org.type === "broker" ? "broker" : "organization",
+              id: entry.org.id,
+              label: entry.org.name,
+            },
+          ]
+        : []),
+      ...(entry.request
+        ? [
+            {
+              kind: "procurement_request",
+              id: entry.request.id,
+              label: entry.request.title,
+            },
+          ]
+        : []),
+      ...(entry.threadId ? [{ kind: "operator_thread", id: entry.threadId }] : []),
+    ],
+  };
+}
+
 function Actor({ entry }: { entry: AuditEntry }) {
   if (!entry.actor) return <span className="text-muted-foreground">System</span>;
   return (
@@ -124,6 +167,7 @@ function AuditDetails({
   onClose: () => void;
 }) {
   const target = targetLink(entry);
+  usePageContextLayer(auditEntryContext(entry));
   return (
     <SettingsDrawer
       open
@@ -232,6 +276,15 @@ export default function OperatorAuditPage() {
     direction: "desc",
   });
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
+  const operatorName = operators?.find(
+    (operator) => operator.userId === operatorParam,
+  )?.name;
+  const pageSummary = operatorContextSummary(
+    "Operator activity log, newest first",
+    operatorParam &&
+      (operatorName ? `operator ${operatorName}` : "filtered to one operator"),
+    source && `source ${SOURCES[source]}`,
+  );
 
   function setFilters(values: Partial<Record<"operator" | "source", string>>) {
     const next = new URLSearchParams(params);
@@ -257,6 +310,19 @@ export default function OperatorAuditPage() {
         ) : undefined
       }
     >
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_audit",
+          summary: pageSummary,
+          ...(operatorParam
+            ? {
+                related: [
+                  { kind: "user", id: operatorParam, label: operatorName },
+                ],
+              }
+            : {}),
+        }}
+      />
       <div className="space-y-4">
         <ListToolbar
           followKey="operator-audit"

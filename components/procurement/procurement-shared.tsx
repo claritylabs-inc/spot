@@ -1018,14 +1018,28 @@ export function ProcurementEmailDrawer({
   // The AI panel works on the open conversation while it is shown.
   const { pushPageContext } = usePageContext();
   const contextSubject = result?.thread.subject ?? subject;
+  const contextClientOrgId = result?.thread.clientOrgId;
+  const contextRequestId = result?.thread.requestId ?? requestId;
   useEffect(
     () =>
       pushPageContext({
         pageType: "team_email_thread",
         entityId: emailThreadId,
         summary: `Email conversation${contextSubject ? `: ${contextSubject.slice(0, 200)}` : ""}`,
+        ...(contextClientOrgId || contextRequestId
+          ? {
+              related: [
+                ...(contextClientOrgId
+                  ? [{ kind: "organization", id: contextClientOrgId }]
+                  : []),
+                ...(contextRequestId
+                  ? [{ kind: "procurement_request", id: contextRequestId }]
+                  : []),
+              ],
+            }
+          : {}),
       }),
-    [contextSubject, emailThreadId, pushPageContext],
+    [contextClientOrgId, contextRequestId, contextSubject, emailThreadId, pushPageContext],
   );
   const thread = result?.thread._id === emailThreadId ? result : undefined;
   const latestInbound = thread?.messages.findLast(

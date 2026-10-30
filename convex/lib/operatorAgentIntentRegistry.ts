@@ -102,7 +102,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
     id: "prepare_certificate",
     version: 1,
     label: "Prepare a certificate",
-    pageTypes: ["policy", "operator_client_compliance"],
+    pageTypes: ["policy", "operator_client_compliance", "requirement", "requirement_source", "certificate"],
     objective:
       "Prepare a certificate of insurance using the policy or client in this thread's origin context. Resolve the correct active policy, holder, requirements, and any missing address details. Explain any coverage gaps and require exact confirmation before generating a certificate.",
   },
@@ -203,20 +203,44 @@ export function operatorAgentIntentFamilies(intentId: string) {
     : undefined;
 }
 
+/** The attached page a page-context read or hint is built from. */
+export type OperatorPrefetchPage = {
+  pageType: string;
+  entityId: string;
+  summary?: string;
+  /** The page URL when it was attached, e.g. with a `?view=` section. */
+  href?: string;
+  related: ReadonlyArray<{ kind: string; id: string; label?: string }>;
+};
+
 /**
- * A read the runner performs in code before an intent's first model step.
- * `input` derives the tool input from the intent's structured focus ids and
- * earlier stages' successful results; undefined skips the read.
+ * A read the runner performs in code before an intent's (or attached page's)
+ * first model step. `input` derives the tool input from the structured focus
+ * ids and earlier stages' successful results; undefined skips the read.
  */
 export type OperatorIntentPrefetchRead = {
   toolName: OperatorAgentToolName;
   input: (state: {
     focus: Readonly<Record<string, string>>;
     results: ReadonlyMap<OperatorAgentToolName, unknown>;
+    /** The first id of a related record of this kind on the attached page. */
+    relatedId?: (kind: string) => string | undefined;
+    /** That record's label, when the page gave one. */
+    relatedLabel?: (kind: string) => string | undefined;
+    /** The whole attached page; absent for starter intents. */
+    page?: OperatorPrefetchPage;
   }) => Record<string, unknown> | undefined;
+  /**
+   * Set when the read loads only part of the record: what it lacks and the
+   * tool that reads more, e.g. "status only; lookup_policy with policyIds
+   * returns coverages and limits". The prompt then names it instead of
+   * telling the model not to read the record again.
+   */
+  partial?: string;
 };
 
-const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
+/** The request a prefetched team inbox thread is linked or addressed to. */
+export const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
   results,
 }) => {
   const thread = results.get("get_team_inbox_thread") as

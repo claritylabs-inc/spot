@@ -6,20 +6,61 @@ import { useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
-import { ClientFilesWorkspace } from "@/components/client-files/client-files-workspace";
+import {
+  ClientFilesWorkspace,
+  type ClientFilesContextState,
+} from "@/components/client-files/client-files-workspace";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import type { PageContext } from "@/hooks/use-page-context";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+
+function filesPageContext(
+  clientOrgId: string,
+  clientName: string,
+  state: ClientFilesContextState,
+): PageContext {
+  const file = state.openFile;
+  return {
+    pageType: "operator_client_files",
+    entityId: clientOrgId,
+    summary: pageContextSummary([
+      file &&
+        `${file.panel === "image" ? "Viewing" : "Editing"} client file “${file.name.slice(0, 120)}” (${file.contentType}, ${file.clientVisible ? "shared with client" : "private"}${file.archived ? ", archived" : ""}${file.policyId ? `, linked to policy ${file.policyLabel ?? ""}` : ", no linked policy"})`,
+      `Files held for ${clientName}`,
+      `${state.status === "archived" ? "archived" : "active"} ${state.view === "all" ? "" : `${state.view} `}files, ${state.shownCount} shown${state.truncated ? " (latest 200 only)" : ""}`,
+      state.uploadOpen && "upload drawer open",
+    ]),
+    related: file
+      ? [
+          { kind: "client_file", id: file.id, label: file.name },
+          ...(file.policyId
+            ? [
+                {
+                  kind: "policy",
+                  id: file.policyId,
+                  ...(file.policyLabel ? { label: file.policyLabel } : {}),
+                },
+              ]
+            : []),
+        ]
+      : undefined,
+  };
+}
 
 export default function OperatorClientFilesPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
@@ -57,7 +98,7 @@ export default function OperatorClientFilesPage() {
           pageType: "operator_client_files",
           entityId: clientOrgId,
           summary: client
-            ? `Files held for ${client.name}`
+            ? `Files held for ${clientContextName(client)}`
             : "Current client files",
         }}
       />
@@ -106,6 +147,9 @@ export default function OperatorClientFilesPage() {
             }
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
+            pageContext={(state) =>
+              filesPageContext(clientOrgId, clientContextName(client), state)
+            }
           />
         </main>
       )}

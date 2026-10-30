@@ -6,6 +6,11 @@ import { useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
+import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  namedList,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -180,6 +185,40 @@ export default function OperatorClientsScreen() {
   const selectedApplicationIds = filteredApplications
     .map((application) => application.requestId)
     .filter(selection.isSelected);
+  const selectedClients = (filteredClients ?? []).filter((client) =>
+    selection.isSelected(client._id),
+  );
+  const selectedApplications = filteredApplications.filter((application) =>
+    selection.isSelected(application.requestId),
+  );
+  const pageContextSummaryText = pageContextSummary([
+    "Client organizations list",
+    filter === "all"
+      ? "status filter: all except archived"
+      : `status filter: ${OPERATOR_CLIENT_STATUSES[filter].label}`,
+    searchText && `search “${search.trim().slice(0, 80)}”`,
+    filteredClients &&
+      `${filteredClients.length} client${filteredClients.length === 1 ? "" : "s"} shown`,
+    filteredApplications.length > 0 &&
+      `${filteredApplications.length} unsubmitted application${filteredApplications.length === 1 ? "" : "s"} shown`,
+    selectedClients.length > 0 &&
+      `selected clients: ${namedList(selectedClients.map((client) => client.dba ?? client.name), 4)}`,
+    selectedApplications.length > 0 &&
+      `selected applications: ${namedList(selectedApplications.map(applicationName), 2)}`,
+  ]);
+  // The first selected rows, by exact ID; the summary counts the rest.
+  const pageContextRelated = [
+    ...selectedClients.slice(0, 8).map((client) => ({
+      kind: "organization",
+      id: client._id,
+      label: client.dba ?? client.name,
+    })),
+    ...selectedApplications.slice(0, 2).map((application) => ({
+      kind: "procurement_request",
+      id: application.requestId,
+      label: applicationName(application),
+    })),
+  ].slice(0, 10);
   const stopOperatorImpersonation = useStopOperatorImpersonation(
     current?.activeImpersonation,
   );
@@ -217,6 +256,13 @@ export default function OperatorClientsScreen() {
   );
   return (
     <AppShell actions={actions}>
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_clients",
+          summary: pageContextSummaryText,
+          related: pageContextRelated,
+        }}
+      />
       <main className="flex w-full flex-col gap-4">
         <ListToolbar
           followKey="clients:list"

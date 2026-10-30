@@ -82,7 +82,8 @@ function expandToolsUsage(message: Doc<"operatorAgentMessages"> | null) {
 
 /**
  * Read-only calibration view: recent operator runs with their stored planning
- * assessment, tool families and expand_tools usage beside the outcome, for
+ * assessment, tool families, expand_tools usage and page-context prefetch
+ * beside the outcome, for
  * checking planning and family-loading thresholds against history. Failed tool calls approximate recovery attempts; exact recovery
  * state lives in the run's continuation blob.
  */
@@ -131,6 +132,12 @@ export const listRecentRunsInternal = internalQuery({
               ? firstStepTimings.some((row) => row.expandToolsWithheld === true)
               : null,
           },
+          // Whether the attached page's record was prefetched before the
+          // first step, and each declared read's outcome or skip reason;
+          // null when no page entry applied or the run predates it.
+          pageContextPrefetch:
+            firstStepTimings.find((row) => row.pageContextPrefetch)
+              ?.pageContextPrefetch ?? null,
           outcome: {
             status: run.status,
             iterations: run.checkpoint?.iteration ?? 0,

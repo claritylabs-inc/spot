@@ -5,8 +5,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { ManagedClientPolicyWorkspace } from "@/components/policies/managed-client-policy-workspace";
 import { AppShell } from "@/components/app-shell";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -57,16 +62,27 @@ export default function OperatorClientPoliciesPage() {
       router.replace(basePath);
     }
   }, [archivedRequested, archivedPolicies, basePath, router]);
+  // Same subscription as the workspace's list, for the agent page context.
+  const listedPolicies = useCachedQuery(
+    "policies.listForOperator",
+    api.policies.listForOperator,
+    client
+      ? { clientOrgId: client._id, documentType: "policy", archived: showArchived }
+      : "skip",
+  );
+  const clientName = client ? clientContextName(client) : "the current client";
+  const clientLabel = client ? (client.dba ?? client.name) : undefined;
   const policyPreview = useMemo(
     () =>
       previewPolicyId ? (
         <OperatorPolicyPreview
           clientOrgId={clientOrgId}
+          clientLabel={clientLabel}
           policyId={previewPolicyId}
           onClose={() => setPreviewPolicyId(null)}
         />
       ) : null,
-    [clientOrgId, previewPolicyId, setPreviewPolicyId],
+    [clientLabel, clientOrgId, previewPolicyId, setPreviewPolicyId],
   );
 
   const statusNavigation = (
@@ -113,6 +129,20 @@ export default function OperatorClientPoliciesPage() {
       }
       rightPanel={rightPanel}
     >
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_client_policies",
+          entityId: clientOrgId,
+          summary: pageContextSummary([
+            `Policies for ${clientName}`,
+            `${policyStatus} policies${listedPolicies ? `, ${listedPolicies.length} shown` : ""}`,
+            hasArchivedPolicies &&
+              !showArchived &&
+              `${archivedPolicies?.length} archived`,
+            activeImpersonation && "read-only while impersonating",
+          ]),
+        }}
+      />
       {clients === undefined ? (
         <OperationalPanel>
           <div className="flex h-40 items-center justify-center text-muted-foreground">

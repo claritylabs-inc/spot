@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
 import { BadgeCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -25,10 +25,15 @@ import { PillButton } from "@/components/ui/pill-button";
 import { ListToolbar, type FilterDefinition } from "@/components/ui/list-toolbar";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
-import { usePageContext } from "@/hooks/use-page-context";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
+import {
+  certificateContextSummary,
+  contextSummary,
+  usePageContextBase,
+} from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 
@@ -89,21 +94,23 @@ function CertificateEmptyPanel({
 }
 
 function CertificatesPageContext({
-  activeCount,
+  summary,
+  selected,
 }: {
-  activeCount: number;
+  summary: string;
+  /** The certificate whose panel is open. */
+  selected: PolicyCertificateRecord | null;
 }) {
-  const { setPageContext } = usePageContext();
-
-  useEffect(() => {
-    setPageContext({
-      pageType: "certificates",
-      summary: `${activeCount} active certificate${activeCount === 1 ? "" : "s"}`,
-    });
-
-    return () => setPageContext(null);
-  }, [activeCount, setPageContext]);
-
+  usePageContextBase({ pageType: "certificates", summary });
+  usePageContextLayer(
+    selected
+      ? {
+          pageType: "certificate",
+          entityId: selected._id,
+          summary: certificateContextSummary(selected),
+        }
+      : null,
+  );
   return null;
 }
 
@@ -366,7 +373,21 @@ export function CertificatesWorkspace({
   ];
   const content = (
     <>
-      <CertificatesPageContext activeCount={activeCertificates.length} />
+      <CertificatesPageContext
+        summary={contextSummary([
+          `${activeCertificates.length} active certificate${activeCertificates.length === 1 ? "" : "s"}`,
+          visibleTab === "archived"
+            ? `showing ${archivedCertificates.length} archived`
+            : undefined,
+          effectivePolicyFilter.length
+            ? `filtered to ${policyFilters
+                .filter((option) => effectivePolicyFilter.includes(option.value))
+                .map((option) => option.label)
+                .join(", ")}`
+            : undefined,
+        ])}
+        selected={generateOpen ? null : selectedCertificate}
+      />
       <div className="space-y-4">
         {certificateFilters.length > 0 ? (
           <ListToolbar followKey={uiKey} filters={certificateFilters} />
