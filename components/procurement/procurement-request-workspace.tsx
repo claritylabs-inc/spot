@@ -64,6 +64,8 @@ import {
   ProviderOutreachPanel,
   ProviderOutreachCadence,
   SequenceState,
+  followUpKey,
+  followUpSortValue,
   sequenceForOutreach,
   useProviderOutreach,
 } from "./provider-outreach-panel";
@@ -2734,6 +2736,15 @@ export function ProcurementRequestWorkspace({
           <PillButton
             type="button"
             variant="secondary"
+            expandLabel
+            label="Share link"
+            onClick={() => void openPacketLink()}
+          >
+            <Link className="size-3.5" />
+          </PillButton>
+          <PillButton
+            type="button"
+            variant="secondary"
             onClick={() => openOutreachEditor()}
           >
             <Plus className="size-3.5" />
@@ -2798,6 +2809,7 @@ export function ProcurementRequestWorkspace({
     sendAllCount,
     canSendAll,
     openNotes,
+    openPacketLink,
     openUpload,
     readOnly,
     view,
@@ -3176,25 +3188,6 @@ export function ProcurementRequestWorkspace({
           </>
         ) : null}
 
-        {view === "proposals" && !readOnly ? (
-          <OperationalPanel
-            as="div"
-            className="flex flex-wrap items-center gap-3 px-4 py-3"
-          >
-            <div className="min-w-0 flex-1">
-              <p className={typeStyle("body.medium")}>Provider share link</p>
-            </div>
-            <PillButton
-              type="button"
-              variant="secondary"
-              onClick={() => void openPacketLink()}
-            >
-              <Link className="size-3.5" />
-              Share link
-            </PillButton>
-          </OperationalPanel>
-        ) : null}
-
         {view === "proposals" ? (
           <ProviderOutreachPanel
             controller={providerOutreach}
@@ -3225,6 +3218,12 @@ export function ProcurementRequestWorkspace({
                   contact: sequence?.recipient.email ?? outreach.contactEmail,
                   coverage: candidate?.lines.covered.length,
                   status: outreachStatusSortValue(outreach.status),
+                  followUp: followUpSortValue(sequence),
+                },
+                match: {
+                  text: `${outreach.brokerName} ${sequence?.recipient.email ?? outreach.contactEmail ?? ""}`,
+                  status: outreach.status,
+                  followUp: followUpKey(sequence),
                 },
                 row: (
                   <TableRow
@@ -3266,9 +3265,6 @@ export function ProcurementRequestWorkspace({
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
                         <OutreachStatusTag status={outreach.status} />
-                        {sequence ? (
-                          <SequenceState sequence={sequence} />
-                        ) : null}
                         {proposal && proposalExtractionState(proposal) ? (
                           <ProposalExtractionStatus
                             proposal={proposal}
@@ -3303,6 +3299,13 @@ export function ProcurementRequestWorkspace({
                           </StatusTag>
                         ) : null}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {sequence ? (
+                        <SequenceState sequence={sequence} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div

@@ -32,6 +32,8 @@ import {
 } from "./procurement-shared";
 import { FollowUpCountSelect, IntervalSelect } from "./outreach-cadence-selects";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
+import { ListToolbar, type FilterDefinition } from "@/components/ui/list-toolbar";
 import { useTableSort, type TableSortValue } from "@/hooks/use-table-sort";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
@@ -853,6 +855,7 @@ function CandidateRow({
           <FitTag candidate={candidate} />
         )}
       </TableCell>
+      <TableCell className="text-muted-foreground">—</TableCell>
       <TableCell className="text-right">
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
           {blocked === "sequence_exists" ||
@@ -1008,7 +1011,59 @@ export type ProviderSortValues = {
   contact: TableSortValue;
   coverage: TableSortValue;
   status: TableSortValue;
+  followUp: TableSortValue;
 };
+
+/** What the search box and filters match a provider row against. */
+export type ProviderRowMatch = {
+  text: string;
+  status: string;
+  followUp: string;
+};
+
+const FOLLOW_UP_OPTIONS = [
+  { value: "none", label: "No follow-ups" },
+  { value: "active", label: "Scheduled" },
+  { value: "reply_check", label: "Checking reply" },
+  { value: "responded", label: "Replied" },
+  { value: "completed", label: "Done" },
+  { value: "failed", label: "Delivery failed" },
+  { value: "stopped", label: "Stopped" },
+];
+
+const FOLLOW_UP_ORDER = new Map<string, number>(
+  FOLLOW_UP_OPTIONS.map((option, index) => [option.value, index]),
+);
+
+/** The follow-up filter bucket of a provider's sequence. */
+export function followUpKey(sequence: SequenceView | null) {
+  if (!sequence) return "none";
+  return FOLLOW_UP_ORDER.has(sequence.status) ? sequence.status : "stopped";
+}
+
+export function followUpSortValue(sequence: SequenceView | null) {
+  return FOLLOW_UP_ORDER.get(followUpKey(sequence));
+}
+
+const NOT_CONTACTED_STATUS_OPTIONS = [
+  { value: "not_contacted", label: "Not contacted" },
+  { value: "fit_unknown", label: "Fit unknown" },
+  { value: "excluded", label: "Excluded" },
+];
+
+function candidateStatusKey(candidate: ProviderCandidateView) {
+  if (candidate.outreach) return candidate.outreach.status;
+  if (candidate.verdict === "matched") return "not_contacted";
+  return candidate.verdict === "excluded" ? "excluded" : "fit_unknown";
+}
+
+function candidateMatch(candidate: ProviderCandidateView): ProviderRowMatch {
+  return {
+    text: `${candidate.name} ${candidate.recipient?.email ?? ""}`,
+    status: candidateStatusKey(candidate),
+    followUp: "none",
+  };
+}
 
 const OUTREACH_STATUS_ORDER = new Map<string, number>(
   OUTREACH_STATUS_OPTIONS.map((option, index) => [option.value, index]),
@@ -1021,6 +1076,7 @@ export function outreachStatusSortValue(status: string) {
 type ProviderTableRow = {
   group: "submitted" | "matched" | "other";
   sort: ProviderSortValues;
+  match: ProviderRowMatch;
   render: () => ReactNode;
 };
 
@@ -1029,6 +1085,7 @@ const PROVIDER_SORT_COLUMNS = {
   contact: (row: ProviderTableRow) => row.sort.contact,
   coverage: (row: ProviderTableRow) => row.sort.coverage,
   status: (row: ProviderTableRow) => row.sort.status,
+  followUp: (row: ProviderTableRow) => row.sort.followUp,
 };
 
 function candidateSortValues(
@@ -1041,6 +1098,7 @@ function candidateSortValues(
     status: candidate.outreach
       ? outreachStatusSortValue(candidate.outreach.status)
       : undefined,
+    followUp: undefined,
   };
 }
 
@@ -1054,6 +1112,7 @@ export function ProviderOutreachPanel({
     key: string;
     brokerOrgId?: Id<"organizations">;
     sort: ProviderSortValues;
+    match: ProviderRowMatch;
     row: ReactNode;
   }[];
   readOnly?: boolean;
@@ -1075,7 +1134,49 @@ export function ProviderOutreachPanel({
     ...(panel?.candidates.unknown ?? []),
     ...(panel?.candidates.excluded ?? []),
   ].filter((candidate) => !submittedIds.has(candidate.brokerOrgId));
-  const showOthers = othersOpen ?? (!rows.length && !submittedProviders.length);
+  const toolbarKey = `procurement:${requestId}:providers`;
+  const [search, setSearch] = useFollowedState(`${toolbarKey}:search`, "");
+  const [statusFilter, setStatusFilter] = useSavedFollowedState<string[]>(
+    `${toolbarKey}:status-filter`,
+    [],
+  );
+  const [followUpFilter, setFollowUpFilter] = useSavedFollowedState<string[]>(
+    `${toolbarKey}:follow-up-filter`,
+    [],
+  );
+  const query = search.trim().toLowerCase();
+  const filtering = !!query || !!statusFilter.length || !!followUpFilter.length;
+  const matchesFilters = ({ text, status, followUp }: ProviderRowMatch) =>
+    (!query || text.toLowerCase().includes(query)) &&
+    (!statusFilter.length || statusFilter.includes(status)) &&
+    (!followUpFilter.length || followUpFilter.includes(followUp));
+  const showOthers =
+    filtering || (othersOpen ?? (!rows.length && !submittedProviders.length));
+  const filters: FilterDefinition[] = [
+    {
+      id: "status",
+      label: "Status",
+      inline: true,
+      multiple: true,
+      allLabel: "All statuses",
+      value: statusFilter,
+      onChange: setStatusFilter,
+      options: [
+        ...OUTREACH_STATUS_OPTIONS.map(({ value, label }) => ({ value, label })),
+        ...NOT_CONTACTED_STATUS_OPTIONS,
+      ],
+    },
+    {
+      id: "follow-up",
+      label: "Follow-up",
+      inline: true,
+      multiple: true,
+      allLabel: "All follow-ups",
+      value: followUpFilter,
+      onChange: setFollowUpFilter,
+      options: FOLLOW_UP_OPTIONS,
+    },
+  ];
   const candidateRow = (candidate: ProviderCandidateView) => (
     <CandidateRow
       key={candidate.brokerOrgId}
@@ -1090,30 +1191,35 @@ export function ProviderOutreachPanel({
   );
   // Submitted, matched and other providers each sort within their group.
   const tableSort = useTableSort(
-    `procurement:${requestId}:providers`,
+    toolbarKey,
     [
       ...submittedProviders.map((provider) => ({
         group: "submitted" as const,
         sort: provider.sort,
+        match: provider.match,
         render: () => provider.row,
       })),
       ...rows.map((candidate) => ({
         group: "matched" as const,
         sort: candidateSortValues(candidate),
+        match: candidateMatch(candidate),
         render: () => candidateRow(candidate),
       })),
       ...others.map((candidate) => ({
         group: "other" as const,
         sort: candidateSortValues(candidate),
+        match: candidateMatch(candidate),
         render: () => candidateRow(candidate),
       })),
-    ],
+    ].filter((row) => matchesFilters(row.match)),
     PROVIDER_SORT_COLUMNS,
   );
   const renderGroup = (group: ProviderTableRow["group"]) =>
     tableSort.rows
       .filter((row) => row.group === group)
       .map((row) => row.render());
+  const visibleCount = (group: ProviderTableRow["group"]) =>
+    tableSort.rows.filter((row) => row.group === group).length;
   const matchGaps = (panel?.banners ?? []).flatMap((banner) => MATCH_GAP_COPY[banner] ?? []);
   if (!panel && !readOnly) return null;
   return (
@@ -1141,6 +1247,20 @@ export function ProviderOutreachPanel({
         </div>
       ) : null}
       <section aria-label="Providers" className="space-y-3">
+        <ListToolbar
+          followKey={toolbarKey}
+          search={{
+            value: search,
+            onChange: setSearch,
+            label: "Search providers",
+            placeholder: "Search providers",
+          }}
+          filters={filters}
+          onClearFilters={() => {
+            setStatusFilter([]);
+            setFollowUpFilter([]);
+          }}
+        />
         <OperationalPanel as="div" data-operator-inline-fields>
           <Table>
             <TableHeader>
@@ -1157,6 +1277,9 @@ export function ProviderOutreachPanel({
                 <SortableTableHead {...tableSort.head("status")}>
                   Status
                 </SortableTableHead>
+                <SortableTableHead {...tableSort.head("followUp")}>
+                  Follow-up
+                </SortableTableHead>
                 <TableHead className="text-right">
                   <span className="sr-only">Actions</span>
                 </TableHead>
@@ -1165,10 +1288,22 @@ export function ProviderOutreachPanel({
             <TableBody>
               {renderGroup("submitted")}
               {renderGroup("matched")}
-              {!rows.length && !submittedProviders.length ? (
+              {filtering &&
+              !visibleCount("submitted") &&
+              !visibleCount("matched") &&
+              !visibleCount("other") ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
+                    className="h-16 text-center text-muted-foreground"
+                  >
+                    No providers match these filters.
+                  </TableCell>
+                </TableRow>
+              ) : !filtering && !rows.length && !submittedProviders.length ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
                     className="h-16 text-center text-muted-foreground"
                   >
                     {others.length
@@ -1177,9 +1312,9 @@ export function ProviderOutreachPanel({
                   </TableCell>
                 </TableRow>
               ) : null}
-              {others.length ? (
+              {others.length && !filtering ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={5} className="p-0">
+                  <TableCell colSpan={6} className="p-0">
                     <button
                       type="button"
                       aria-expanded={showOthers}
