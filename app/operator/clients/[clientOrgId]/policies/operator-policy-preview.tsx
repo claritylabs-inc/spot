@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FileSearch, PanelRightOpen } from "lucide-react";
 import { PolicyPreview } from "@/components/preview/policy-preview";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { usePdf, type PdfHighlightBox } from "@/components/pdf-context";
 import type { Id } from "@/convex/_generated/dataModel";
-import { usePageContext } from "@/hooks/use-page-context";
-import { policyContextSummary } from "@/lib/policy-page-context";
+import {
+  policyContextSummary,
+  relatedRecords,
+  usePageContextLayer,
+} from "@/lib/policy-page-context";
 import { useCachedPolicySummary } from "@/lib/sync/spot-cached-queries";
 
 type PreviewActions = {
@@ -32,13 +35,13 @@ export function OperatorPolicyPreview({
   );
   const { openWithUrl } = usePdf();
   // The AI panel works on the previewed policy while the drawer is open.
-  const { pushPageContext } = usePageContext();
   const policy = useCachedPolicySummary(policyId as Id<"policies">);
-  const summary = policyContextSummary(policy ?? {}, ["preview drawer"]);
-  useEffect(
-    () => pushPageContext({ pageType: "policy", entityId: policyId, summary }),
-    [policyId, pushPageContext, summary],
-  );
+  usePageContextLayer({
+    pageType: "policy",
+    entityId: policyId,
+    summary: policyContextSummary(policy ?? {}, ["preview drawer"]),
+    related: relatedRecords([{ kind: "organization", id: clientOrgId }]),
+  });
   const activeActions =
     previewActions?.policyId === policyId ? previewActions : null;
 

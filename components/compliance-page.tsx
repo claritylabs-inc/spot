@@ -102,11 +102,14 @@ import { typeStyle } from "@/lib/typography";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import {
-  usePageContext,
   usePageContextLayer,
   type PageContext,
 } from "@/hooks/use-page-context";
-import { contextIds, contextSummary } from "@/lib/policy-page-context";
+import {
+  contextSummary,
+  relatedRecords,
+  usePageContextBase,
+} from "@/lib/policy-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 
 type RequirementScope = "vendors" | "own_org";
@@ -680,7 +683,6 @@ function requirementContextSummary(
   generating: boolean,
 ) {
   const check = requirement.complianceCheck;
-  const matchedPolicyIds = matchedPolicyIdsForRequirement(requirement);
   return contextSummary([
     `Requirement: ${requirement.title}`,
     requirement.scope === "vendors" ? "vendor requirement" : undefined,
@@ -701,11 +703,29 @@ function requirementContextSummary(
       ? `from ${requirement.sourceDocumentName}`
       : undefined,
     generating ? "generating a certificate" : undefined,
-    contextIds({
-      orgId: requirement.orgId,
-      requirementSourceDocumentId: requirement.sourceDocumentId,
-      matchedPolicyIds: matchedPolicyIds.slice(0, 3).join(","),
-    }),
+  ]);
+}
+
+/** The client, source and policies matched to a requirement. */
+function requirementContextRelated(requirement: Requirement) {
+  const matched = requirement.complianceCheck?.matchedPolicy;
+  return relatedRecords([
+    { kind: "organization", id: requirement.orgId },
+    {
+      kind: "requirement_source",
+      id: requirement.sourceDocumentId,
+      label: requirement.sourceDocumentName,
+    },
+    ...matchedPolicyIdsForRequirement(requirement)
+      .slice(0, 3)
+      .map((id) => ({
+        kind: "policy",
+        id,
+        label:
+          id === matched?._id && matched.policyNumber
+            ? `Policy ${matched.policyNumber}`
+            : undefined,
+      })),
   ]);
 }
 
@@ -726,7 +746,6 @@ function requirementSourceContextSummary(
         ? "requirement extraction failed"
         : undefined,
     generating ? "generating a certificate" : undefined,
-    contextIds({ orgId: source.orgId }),
   ]);
 }
 
@@ -2445,7 +2464,6 @@ function ComplianceWorkspace({
     currentRoute.current = { pathname, searchParams };
   }, [pathname, searchParams]);
   const { openWithUrl } = usePdf();
-  const { setPageContext, pushPageContext } = usePageContext();
   const routeOrg = useActiveOrgContext();
   const currentOrg = orgContext ?? routeOrg;
   useEffect(() => {
@@ -2921,15 +2939,15 @@ function ComplianceWorkspace({
         ? `${requirementSources.length} requirement sources`
         : undefined,
   ]);
-  useEffect(() => {
-    if (!operatorContextOrgId) return;
-    setPageContext({
-      pageType: "operator_client_compliance",
-      entityId: operatorContextOrgId,
-      summary: operatorContextSummary,
-    });
-    return () => setPageContext(null);
-  }, [operatorContextOrgId, operatorContextSummary, setPageContext]);
+  usePageContextBase(
+    operatorContextOrgId
+      ? {
+          pageType: "operator_client_compliance",
+          entityId: operatorContextOrgId,
+          summary: operatorContextSummary,
+        }
+      : null,
+  );
   // The record in the right panel, matching its precedence below: certificate
   // generation, then the requirement drawer, then the source drawer.
   const generatingForSource =
@@ -2947,17 +2965,16 @@ function ComplianceWorkspace({
   const focusedSource = certificateSourceId
     ? generatingForSource
     : !selectedRequirement && selectedSource;
-  const focusedContext =
+  const generating = Boolean(certificateSourceId);
+  usePageContextLayer(
     !operatorContextOrgId || view === "certificates"
       ? null
       : focusedRequirement
         ? {
             pageType: "requirement",
             entityId: focusedRequirement._id,
-            summary: requirementContextSummary(
-              focusedRequirement,
-              Boolean(certificateSourceId),
-            ),
+            summary: requirementContextSummary(focusedRequirement, generating),
+            related: requirementContextRelated(focusedRequirement),
           }
         : focusedSource
           ? {
@@ -2965,21 +2982,14 @@ function ComplianceWorkspace({
               entityId: focusedSource._id,
               summary: requirementSourceContextSummary(
                 focusedSource,
-                Boolean(certificateSourceId),
+                generating,
               ),
+              related: relatedRecords([
+                { kind: "organization", id: focusedSource.orgId },
+              ]),
             }
-          : null;
-  const focusedPageType = focusedContext?.pageType;
-  const focusedEntityId = focusedContext?.entityId;
-  const focusedSummary = focusedContext?.summary;
-  useEffect(() => {
-    if (!focusedPageType || !focusedEntityId) return;
-    return pushPageContext({
-      pageType: focusedPageType,
-      entityId: focusedEntityId,
-      summary: focusedSummary,
-    });
-  }, [focusedEntityId, focusedPageType, focusedSummary, pushPageContext]);
+          : null,
+  );
 
   if (isBroker) return null;
 
