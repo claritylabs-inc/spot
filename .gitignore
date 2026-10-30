@@ -65,6 +65,7 @@ node_modules/
 !/docs/architecture/reviewer-account.md
 !/docs/architecture/backend-simplification.md
 !/docs/architecture/client-web-monitors.md
+!/docs/architecture/provider-discovery.md
 !/docs/architecture/chat-presentations.md
 !/docs/architecture/convex-section-extraction.md
 !/docs/architecture/router-jobs.md

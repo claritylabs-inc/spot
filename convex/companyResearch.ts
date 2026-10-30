@@ -73,10 +73,11 @@ async function reconcileCompanyResearchFacts(
   });
 }
 
+/** `run: false` leaves the queued research for the caller to claim, as batch research does. */
 export async function scheduleCompanyResearch(
   ctx: MutationCtx,
   orgId: Id<"organizations">,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; run?: boolean } = {},
 ) {
   const org = await ctx.db.get(orgId);
   if (
@@ -146,77 +147,84 @@ export async function scheduleCompanyResearch(
     },
   });
   if (!retainEvidence) await reconcileCompanyResearchFacts(ctx, orgId, []);
-  await ctx.scheduler.runAfter(0, runRef, { orgId });
+  if (options.run !== false) await ctx.scheduler.runAfter(0, runRef, { orgId });
   return true;
+}
+
+/** Leases pending research to one runner; null when there is nothing to run. */
+export async function claimCompanyResearch(
+  ctx: MutationCtx,
+  orgId: Id<"organizations">,
+) {
+  const org = await ctx.db.get(orgId);
+  if (
+    !org ||
+    org.deletedAt !== undefined ||
+    (org.type !== "client" && org.type !== "broker") ||
+    (org.type === "broker" && isSpotOwnedBrokerIdentity(org))
+  )
+    return null;
+  const research = org.companyResearch;
+  if (!research || research.fingerprint !== companyResearchFingerprint(org)) {
+    await scheduleCompanyResearch(ctx, orgId);
+    return null;
+  }
+  if (research.status !== "pending") return null;
+  const now = dayjs().valueOf();
+  const leaseId = crypto.randomUUID();
+  await ctx.db.patch(orgId, {
+    companyResearch: {
+      ...research,
+      status: "running",
+      attempts: research.attempts + 1,
+      leaseId,
+      leaseExpiresAt: now + LEASE_MS,
+      error: undefined,
+      updatedAt: now,
+    },
+  });
+  await ctx.scheduler.runAfter(LEASE_MS, recoverRef, { orgId, leaseId });
+  let profileUpdatedAt: number | undefined;
+  if (org.type === "broker") {
+    const profile = await ctx.db
+      .query("brokerProfiles")
+      .withIndex("broker", (q) => q.eq("brokerOrgId", orgId))
+      .unique();
+    if (!profile)
+      await ctx.db.insert("brokerProfiles", {
+        brokerOrgId: orgId,
+        networkStatus: "prospect",
+        writingStates: [],
+        lineOfBusinessCodes: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    profileUpdatedAt = profile?.updatedAt ?? now;
+  }
+  return {
+    orgId,
+    leaseId,
+    fingerprint: research.fingerprint,
+    name: org.name,
+    website: org.website,
+    type: org.type,
+    profileUpdatedAt,
+  };
 }
 
 export const claim = internalMutation({
   args: { orgId: v.id("organizations") },
-  handler: async (ctx, { orgId }) => {
-    const org = await ctx.db.get(orgId);
-    if (
-      !org ||
-      org.deletedAt !== undefined ||
-      (org.type !== "client" && org.type !== "broker") ||
-      (org.type === "broker" && isSpotOwnedBrokerIdentity(org))
-    )
-      return null;
-    const research = org.companyResearch;
-    if (!research || research.fingerprint !== companyResearchFingerprint(org)) {
-      await scheduleCompanyResearch(ctx, orgId);
-      return null;
-    }
-    if (research.status !== "pending") return null;
-    const now = dayjs().valueOf();
-    const leaseId = crypto.randomUUID();
-    await ctx.db.patch(orgId, {
-      companyResearch: {
-        ...research,
-        status: "running",
-        attempts: research.attempts + 1,
-        leaseId,
-        leaseExpiresAt: now + LEASE_MS,
-        error: undefined,
-        updatedAt: now,
-      },
-    });
-    await ctx.scheduler.runAfter(LEASE_MS, recoverRef, { orgId, leaseId });
-    let profileUpdatedAt: number | undefined;
-    if (org.type === "broker") {
-      const profile = await ctx.db
-        .query("brokerProfiles")
-        .withIndex("broker", (q) => q.eq("brokerOrgId", orgId))
-        .unique();
-      if (!profile)
-        await ctx.db.insert("brokerProfiles", {
-          brokerOrgId: orgId,
-          networkStatus: "prospect",
-          writingStates: [],
-          lineOfBusinessCodes: [],
-          createdAt: now,
-          updatedAt: now,
-        });
-      profileUpdatedAt = profile?.updatedAt ?? now;
-    }
-    return {
-      orgId,
-      leaseId,
-      fingerprint: research.fingerprint,
-      name: org.name,
-      website: org.website,
-      type: org.type,
-      profileUpdatedAt,
-    };
-  },
+  handler: async (ctx, { orgId }) => claimCompanyResearch(ctx, orgId),
 });
 
 async function failLease(
   ctx: MutationCtx,
   org: Doc<"organizations">,
   error: string,
+  options: { retry?: boolean } = {},
 ) {
   const research = org.companyResearch!;
-  const retry = research.attempts < MAX_ATTEMPTS;
+  const retry = options.retry !== false && research.attempts < MAX_ATTEMPTS;
   await ctx.db.patch(org._id, {
     companyResearch: {
       ...research,
@@ -267,6 +275,8 @@ export const fail = internalMutation({
     orgId: v.id("organizations"),
     leaseId: v.string(),
     error: v.string(),
+    /** false fails the research now instead of retrying the single-org runner. */
+    retry: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.orgId);
@@ -281,7 +291,7 @@ export const fail = internalMutation({
       await scheduleCompanyResearch(ctx, org._id);
       return false;
     }
-    await failLease(ctx, org, args.error);
+    await failLease(ctx, org, args.error, { retry: args.retry });
     return true;
   },
 });
@@ -298,6 +308,11 @@ export const complete = internalMutation({
     unresolvedFields: v.optional(v.array(v.string())),
     brokerFindings: v.optional(researchBrokerValidator),
     profileUpdatedAt: v.optional(v.number()),
+    /**
+     * Content prefixes of stored facts this result replaces. With it, other
+     * stored facts are kept instead of being replaced by a complete result.
+     */
+    supersedes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const org = await ctx.db.get(args.orgId);
@@ -335,6 +350,7 @@ export const complete = internalMutation({
     const verifiedCurrentEvidence =
       currentSourceUrls.length > 0 && !args.reason;
     const replaceFacts =
+      !args.supersedes &&
       verifiedCurrentEvidence &&
       currentFacts.length > 0 &&
       !args.unresolvedFields?.length;
@@ -349,7 +365,13 @@ export const complete = internalMutation({
     const mergedFacts = [
       ...new Map(
         [
-          ...research.facts,
+          ...research.facts.filter(
+            (fact) =>
+              !verifiedCurrentEvidence ||
+              !args.supersedes?.some((prefix) =>
+                fact.content.startsWith(prefix),
+              ),
+          ),
           ...(verifiedCurrentEvidence ? currentFacts : []),
         ].map((fact) => [`${fact.key}:${fact.content}`, fact]),
       ).values(),

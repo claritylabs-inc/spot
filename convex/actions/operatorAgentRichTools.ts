@@ -14,9 +14,13 @@ import {
   cancelClientWebMonitor,
   createClientWebMonitor,
 } from "./clientWebMonitors";
+import { startProviderDiscovery } from "./providerDiscovery";
 import { runOperatorWebRetrieval } from "../lib/webRetrieval";
 import { fetchPublicUrl } from "../lib/fetchPublicUrl";
-import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
+import {
+  OPERATOR_AGENT_TOOL_REGISTRY,
+  parseOperatorAgentToolInput,
+} from "../lib/operatorAgentToolRegistry";
 import { mergePdfsFromUrls, mergedFileName } from "../lib/mergePdfs";
 import { fillPdfForm, renderPdfFormFields } from "../lib/pdfFormFill";
 import {
@@ -147,6 +151,20 @@ export const runInternal = internalAction({
             : await cancelClientWebMonitor(ctx, {
                 orgId: String(input.orgId),
               }),
+      };
+    }
+
+    if (args.toolName === "discover_providers") {
+      const { procurementRequestId, ...input } =
+        OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(
+          args.input,
+        );
+      return {
+        result: await startProviderDiscovery(ctx, {
+          ...input,
+          requestId: procurementRequestId,
+          userId: args.operatorUserId,
+        }),
       };
     }
 

@@ -71,6 +71,12 @@ import {
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
 import { acknowledgeClientWebMonitorEvents } from "./clientWebMonitors";
+import {
+  providerCandidateReviewSummary,
+  providerDiscoveryApprovalSummary,
+  readProviderCandidates,
+  reviewProviderCandidatesByOperator,
+} from "./providerDiscovery";
 import { clientRecipientOptions } from "./lib/clientOutreach";
 import { appendWikiSection } from "./lib/wikiAppend";
 import {
@@ -231,6 +237,10 @@ import {
   providerLaunchFingerprint,
 } from "./lib/operatorAgentConfirmationPreflight";
 import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
+import {
+  clientProfileResearchSummary,
+  queueClientProfileBatchResearch,
+} from "./lib/clientProfileBatchResearch";
 import {
   describeOperatorRecordFields,
   type OperatorDescribableRecord,
@@ -410,6 +420,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "read_skill_file",
   "run_skill_script",
   "manage_client_web_monitor",
+  "discover_providers",
   "import_policy_files",
   "fill_pdf_form",
   "edit_pdf_form",
@@ -686,6 +697,26 @@ async function operatorConfirmationSummary(
   }
   if (isClientBatchToolName(toolName)) {
     return clientBatchConfirmationSummary(ctx, toolName, input);
+  }
+  if (toolName === "discover_providers") {
+    return providerDiscoveryApprovalSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(input),
+    );
+  }
+  if (toolName === "review_provider_candidates") {
+    return providerCandidateReviewSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(input),
+    );
+  }
+  if (toolName === "research_client_profiles") {
+    return clientProfileResearchSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.research_client_profiles.inputSchema.parse(
+        input,
+      ).orgIds,
+    );
   }
   if (toolName === "review_procurement_information_suggestions") {
     return informationSuggestionReviewSummary(
@@ -4193,6 +4224,23 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     };
   }
 
+  if (toolName === "list_provider_candidates") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.list_provider_candidates.inputSchema.parse(input);
+    return await readProviderCandidates(
+      ctx,
+      normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      { status: parsed.status, limit: parsed.limit ?? 10, excerptChars: 240 },
+    );
+  }
+
+  if (toolName === "review_provider_candidates") {
+    return await reviewProviderCandidatesByOperator(
+      ctx,
+      args.operatorUserId,
+      OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(input),
+    );
+  }
+
   if (toolName === "acknowledge_client_web_monitor_events") {
     return await acknowledgeClientWebMonitorEvents(ctx, {
       orgId: normalizeOrganizationId(ctx, input.orgId),
@@ -4222,6 +4270,17 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       research: await techStackResearchStatus(ctx, website),
       current: await readWebsiteTechProfile(ctx, website),
     };
+  }
+
+  if (toolName === "research_client_profiles") {
+    const { orgIds } =
+      OPERATOR_AGENT_TOOL_REGISTRY.research_client_profiles.inputSchema.parse(
+        input,
+      );
+    return await queueClientProfileBatchResearch(
+      ctx,
+      orgIds.map((orgId) => normalizeOrganizationId(ctx, orgId)),
+    );
   }
 
   if (toolName === "research_client" || toolName === "research_broker") {

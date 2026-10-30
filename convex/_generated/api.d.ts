@@ -11,6 +11,7 @@
 import type * as actions_brokerContactDefaults from "../actions/brokerContactDefaults.js";
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
+import type * as actions_clientProfileBatchResearch from "../actions/clientProfileBatchResearch.js";
 import type * as actions_clientWebMonitors from "../actions/clientWebMonitors.js";
 import type * as actions_compactOperatorThreadHistory from "../actions/compactOperatorThreadHistory.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
@@ -70,6 +71,7 @@ import type * as actions_procurementInformation from "../actions/procurementInfo
 import type * as actions_procurementInformationResearch from "../actions/procurementInformationResearch.js";
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
+import type * as actions_providerDiscovery from "../actions/providerDiscovery.js";
 import type * as actions_providerOutreach from "../actions/providerOutreach.js";
 import type * as actions_providerOutreachDrafts from "../actions/providerOutreachDrafts.js";
 import type * as actions_reExtractFromFile from "../actions/reExtractFromFile.js";
@@ -215,6 +217,7 @@ import type * as lib_clientFiles from "../lib/clientFiles.js";
 import type * as lib_clientOutreach from "../lib/clientOutreach.js";
 import type * as lib_clientOutreachEmail from "../lib/clientOutreachEmail.js";
 import type * as lib_clientProfile from "../lib/clientProfile.js";
+import type * as lib_clientProfileBatchResearch from "../lib/clientProfileBatchResearch.js";
 import type * as lib_clientWebMonitors from "../lib/clientWebMonitors.js";
 import type * as lib_coiAttachmentGuards from "../lib/coiAttachmentGuards.js";
 import type * as lib_coiGenerator from "../lib/coiGenerator.js";
@@ -455,6 +458,7 @@ import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrc
 import type * as lib_proposalAggregation from "../lib/proposalAggregation.js";
 import type * as lib_proposalMarkdown from "../lib/proposalMarkdown.js";
 import type * as lib_proposalReview from "../lib/proposalReview.js";
+import type * as lib_providerDiscovery from "../lib/providerDiscovery.js";
 import type * as lib_providerOutreachDrafts from "../lib/providerOutreachDrafts.js";
 import type * as lib_providerOutreachEmail from "../lib/providerOutreachEmail.js";
 import type * as lib_providerOutreachLifecycle from "../lib/providerOutreachLifecycle.js";
@@ -465,6 +469,7 @@ import type * as lib_providerOutreachSummary from "../lib/providerOutreachSummar
 import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
 import type * as lib_providerRecipients from "../lib/providerRecipients.js";
 import type * as lib_providerSubmissionDefaultFields from "../lib/providerSubmissionDefaultFields.js";
+import type * as lib_publicResearchVerification from "../lib/publicResearchVerification.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_receivingEmail from "../lib/receivingEmail.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
@@ -612,6 +617,7 @@ import type * as procurementSms from "../procurementSms.js";
 import type * as proposalExtraction from "../proposalExtraction.js";
 import type * as proposalSourceNodes from "../proposalSourceNodes.js";
 import type * as proposalSourceSpans from "../proposalSourceSpans.js";
+import type * as providerDiscovery from "../providerDiscovery.js";
 import type * as providerOutreach from "../providerOutreach.js";
 import type * as providerOutreachDrafts from "../providerOutreachDrafts.js";
 import type * as providerSubmissionDefaults from "../providerSubmissionDefaults.js";
@@ -661,6 +667,7 @@ declare const fullApi: ApiFromModules<{
   "actions/brokerContactDefaults": typeof actions_brokerContactDefaults;
   "actions/chatPresentations": typeof actions_chatPresentations;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
+  "actions/clientProfileBatchResearch": typeof actions_clientProfileBatchResearch;
   "actions/clientWebMonitors": typeof actions_clientWebMonitors;
   "actions/compactOperatorThreadHistory": typeof actions_compactOperatorThreadHistory;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
@@ -720,6 +727,7 @@ declare const fullApi: ApiFromModules<{
   "actions/procurementInformationResearch": typeof actions_procurementInformationResearch;
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
+  "actions/providerDiscovery": typeof actions_providerDiscovery;
   "actions/providerOutreach": typeof actions_providerOutreach;
   "actions/providerOutreachDrafts": typeof actions_providerOutreachDrafts;
   "actions/reExtractFromFile": typeof actions_reExtractFromFile;
@@ -865,6 +873,7 @@ declare const fullApi: ApiFromModules<{
   "lib/clientOutreach": typeof lib_clientOutreach;
   "lib/clientOutreachEmail": typeof lib_clientOutreachEmail;
   "lib/clientProfile": typeof lib_clientProfile;
+  "lib/clientProfileBatchResearch": typeof lib_clientProfileBatchResearch;
   "lib/clientWebMonitors": typeof lib_clientWebMonitors;
   "lib/coiAttachmentGuards": typeof lib_coiAttachmentGuards;
   "lib/coiGenerator": typeof lib_coiGenerator;
@@ -1105,6 +1114,7 @@ declare const fullApi: ApiFromModules<{
   "lib/proposalAggregation": typeof lib_proposalAggregation;
   "lib/proposalMarkdown": typeof lib_proposalMarkdown;
   "lib/proposalReview": typeof lib_proposalReview;
+  "lib/providerDiscovery": typeof lib_providerDiscovery;
   "lib/providerOutreachDrafts": typeof lib_providerOutreachDrafts;
   "lib/providerOutreachEmail": typeof lib_providerOutreachEmail;
   "lib/providerOutreachLifecycle": typeof lib_providerOutreachLifecycle;
@@ -1115,6 +1125,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
   "lib/providerRecipients": typeof lib_providerRecipients;
   "lib/providerSubmissionDefaultFields": typeof lib_providerSubmissionDefaultFields;
+  "lib/publicResearchVerification": typeof lib_publicResearchVerification;
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/receivingEmail": typeof lib_receivingEmail;
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;
@@ -1262,6 +1273,7 @@ declare const fullApi: ApiFromModules<{
   proposalExtraction: typeof proposalExtraction;
   proposalSourceNodes: typeof proposalSourceNodes;
   proposalSourceSpans: typeof proposalSourceSpans;
+  providerDiscovery: typeof providerDiscovery;
   providerOutreach: typeof providerOutreach;
   providerOutreachDrafts: typeof providerOutreachDrafts;
   providerSubmissionDefaults: typeof providerSubmissionDefaults;

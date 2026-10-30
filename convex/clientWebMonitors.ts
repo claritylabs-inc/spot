@@ -21,10 +21,13 @@ import {
   requireOperatorForUser,
 } from "./lib/operatorIdentity";
 import {
+  CLIENT_WEB_MONITOR_ACKNOWLEDGED_RETENTION_DAYS,
   CLIENT_WEB_MONITOR_ATTENTION_DAYS,
   CLIENT_WEB_MONITOR_BODY_BYTES,
   CLIENT_WEB_MONITOR_PENDING_MS,
   CLIENT_WEB_MONITOR_QUERY,
+  CLIENT_WEB_MONITOR_RETENTION_DAYS,
+  CLIENT_WEB_MONITOR_SWEEP_BATCH,
   clientWebMonitorCallbackSchema,
   clientWebMonitorEventFields,
   isClientWebMonitorFrequency,
@@ -412,6 +415,42 @@ export const ingestInternal = internalMutation({
         target: { kind: "client_monitor", eventId: alert },
       });
     return "ok";
+  },
+});
+
+/**
+ * Daily retention: acknowledged events are dropped after 180 days and any event
+ * after 365. Walks the receivedAt index oldest-first one page at a time so
+ * unacknowledged events inside the window cannot starve later pages, and
+ * reschedules itself while pages come back full.
+ */
+export const sweepExpired = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<null> => {
+    const now = dayjs();
+    const acknowledgedCutoff = now
+      .subtract(CLIENT_WEB_MONITOR_ACKNOWLEDGED_RETENTION_DAYS, "day")
+      .valueOf();
+    const hardCutoff = now
+      .subtract(CLIENT_WEB_MONITOR_RETENTION_DAYS, "day")
+      .valueOf();
+    const page = await ctx.db
+      .query("clientWebMonitorEvents")
+      .withIndex("by_receivedAt", (q) => q.lt("receivedAt", acknowledgedCutoff))
+      .paginate({
+        numItems: CLIENT_WEB_MONITOR_SWEEP_BATCH,
+        cursor: args.cursor ?? null,
+      });
+    for (const event of page.page)
+      if (event.acknowledgedAt !== undefined || event.receivedAt < hardCutoff)
+        await ctx.db.delete(event._id);
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.clientWebMonitors.sweepExpired,
+        { cursor: page.continueCursor },
+      );
+    return null;
   },
 });
 
