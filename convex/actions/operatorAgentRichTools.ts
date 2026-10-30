@@ -10,6 +10,10 @@ import { internalAction } from "../_generated/server";
 import type { AgentScope } from "../lib/agentScope";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import { readStoredAgentFile } from "../lib/storedAgentFile";
+import {
+  cancelClientWebMonitor,
+  createClientWebMonitor,
+} from "./clientWebMonitors";
 import { runOperatorWebRetrieval } from "../lib/webRetrieval";
 import { fetchPublicUrl } from "../lib/fetchPublicUrl";
 import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
@@ -129,20 +133,19 @@ export const runInternal = internalAction({
         "manage_client_web_monitor",
         args.input,
       );
-      const orgId = input.orgId as Id<"organizations">;
       return {
         result:
           input.action === "create"
-            ? await ctx.runAction(internal.actions.clientWebMonitors.create, {
-                orgId,
+            ? await createClientWebMonitor(ctx, {
+                orgId: String(input.orgId),
                 userId: args.operatorUserId,
                 frequency:
                   typeof input.frequency === "string"
                     ? input.frequency
                     : undefined,
               })
-            : await ctx.runAction(internal.actions.clientWebMonitors.cancel, {
-                orgId,
+            : await cancelClientWebMonitor(ctx, {
+                orgId: String(input.orgId),
               }),
       };
     }

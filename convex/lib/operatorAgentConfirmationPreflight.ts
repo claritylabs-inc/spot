@@ -10,6 +10,8 @@ import { isRemainingBatchToolName, prepareRemainingBatch, resolveBatchAttachment
 import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
+import { currentMonitor } from "../clientWebMonitors";
+import { NoWriteInputError } from "./noWriteInputError";
 import { getMarkdownDocument } from "../markdownDocuments";
 import { preparePacketDocumentUpdate } from "../procurementPacket";
 import { requireCompanyRequest } from "./companyRequest";
@@ -1301,9 +1303,21 @@ export async function preflightOperatorToolConfirmation(
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
       return;
-    case "manage_client_web_monitor":
-      await requireClientOrganization(ctx, args.input.orgId);
+    case "manage_client_web_monitor": {
+      const organization = await requireClientOrganization(ctx, args.input.orgId);
+      const monitor = await currentMonitor(ctx, organization._id);
+      if (args.input.action === "create" && monitor)
+        throw new NoWriteInputError(
+          "web_monitor_exists",
+          "This client already has a web monitor. Cancel it before creating another.",
+        );
+      if (args.input.action === "cancel" && monitor?.status !== "active")
+        throw new NoWriteInputError(
+          "web_monitor_missing",
+          "This client has no active web monitor to cancel.",
+        );
       return;
+    }
     case "set_client_assignees":
     case "set_client_access_statuses":
     case "set_client_feature_flags":
