@@ -57,6 +57,7 @@ const operatorToolCategories = {
   fetch_url: "web",
   get_research_status: "web",
   research_client: "web",
+  research_client_profiles: "web",
   research_client_tech_stack: "web",
   research_broker: "web",
   research_brokers: "web",

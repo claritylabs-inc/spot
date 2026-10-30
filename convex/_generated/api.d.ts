@@ -11,6 +11,7 @@
 import type * as actions_brokerContactDefaults from "../actions/brokerContactDefaults.js";
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
+import type * as actions_clientProfileBatchResearch from "../actions/clientProfileBatchResearch.js";
 import type * as actions_clientWebMonitors from "../actions/clientWebMonitors.js";
 import type * as actions_compactOperatorThreadHistory from "../actions/compactOperatorThreadHistory.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
@@ -215,6 +216,7 @@ import type * as lib_clientFiles from "../lib/clientFiles.js";
 import type * as lib_clientOutreach from "../lib/clientOutreach.js";
 import type * as lib_clientOutreachEmail from "../lib/clientOutreachEmail.js";
 import type * as lib_clientProfile from "../lib/clientProfile.js";
+import type * as lib_clientProfileBatchResearch from "../lib/clientProfileBatchResearch.js";
 import type * as lib_clientWebMonitors from "../lib/clientWebMonitors.js";
 import type * as lib_coiAttachmentGuards from "../lib/coiAttachmentGuards.js";
 import type * as lib_coiGenerator from "../lib/coiGenerator.js";
@@ -465,6 +467,7 @@ import type * as lib_providerOutreachSummary from "../lib/providerOutreachSummar
 import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
 import type * as lib_providerRecipients from "../lib/providerRecipients.js";
 import type * as lib_providerSubmissionDefaultFields from "../lib/providerSubmissionDefaultFields.js";
+import type * as lib_publicResearchVerification from "../lib/publicResearchVerification.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_receivingEmail from "../lib/receivingEmail.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
@@ -661,6 +664,7 @@ declare const fullApi: ApiFromModules<{
   "actions/brokerContactDefaults": typeof actions_brokerContactDefaults;
   "actions/chatPresentations": typeof actions_chatPresentations;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
+  "actions/clientProfileBatchResearch": typeof actions_clientProfileBatchResearch;
   "actions/clientWebMonitors": typeof actions_clientWebMonitors;
   "actions/compactOperatorThreadHistory": typeof actions_compactOperatorThreadHistory;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
@@ -865,6 +869,7 @@ declare const fullApi: ApiFromModules<{
   "lib/clientOutreach": typeof lib_clientOutreach;
   "lib/clientOutreachEmail": typeof lib_clientOutreachEmail;
   "lib/clientProfile": typeof lib_clientProfile;
+  "lib/clientProfileBatchResearch": typeof lib_clientProfileBatchResearch;
   "lib/clientWebMonitors": typeof lib_clientWebMonitors;
   "lib/coiAttachmentGuards": typeof lib_coiAttachmentGuards;
   "lib/coiGenerator": typeof lib_coiGenerator;
@@ -1115,6 +1120,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
   "lib/providerRecipients": typeof lib_providerRecipients;
   "lib/providerSubmissionDefaultFields": typeof lib_providerSubmissionDefaultFields;
+  "lib/publicResearchVerification": typeof lib_publicResearchVerification;
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/receivingEmail": typeof lib_receivingEmail;
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;

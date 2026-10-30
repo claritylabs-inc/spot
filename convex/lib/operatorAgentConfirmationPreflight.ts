@@ -38,6 +38,7 @@ import {
 } from "../procurementRequests";
 import { assertFeatureFlagAllowedForOrg } from "./featureFlags";
 import { clientBatchConfirmationSummary } from "./operatorClientBatch";
+import { requireProfileBatchClients } from "./clientProfileBatchResearch";
 import { assertExternalBrokerIdentity } from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
@@ -106,6 +107,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_organization_profiles",
   "update_client_business_profile",
   "research_client",
+  "research_client_profiles",
   "manage_client_web_monitor",
   "research_broker",
   "research_brokers",
@@ -1302,6 +1304,12 @@ export async function preflightOperatorToolConfirmation(
       return;
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
+      return;
+    case "research_client_profiles":
+      await requireProfileBatchClients(
+        ctx,
+        Array.isArray(args.input.orgIds) ? args.input.orgIds : [],
+      );
       return;
     case "manage_client_web_monitor": {
       const organization = await requireClientOrganization(ctx, args.input.orgId);
