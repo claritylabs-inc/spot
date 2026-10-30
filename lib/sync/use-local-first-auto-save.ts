@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -17,7 +18,7 @@ import {
   type AutoSaveRequestState,
 } from "@/lib/sync/auto-save-sequencer";
 import { createClientMutationId } from "@/lib/sync/client-mutation-id";
-import { changedByTeammate } from "@/lib/collab/doc";
+import { changedByTeammate, leadsSharedRoom } from "@/lib/collab/doc";
 import { getPermissionErrorMessage } from "@/lib/user-facing-error";
 
 type LocalFirstAutoSaveOptions<TArgs, TResult> = {
@@ -38,7 +39,47 @@ type LocalFirstAutoSaveOptions<TArgs, TResult> = {
   onFlushed?: (result: TResult | undefined, args: TArgs) => void;
   onError?: (error: unknown, args: TArgs) => void;
   errorMessage?: string | ((error: unknown, args: TArgs) => string);
+  /**
+   * The saved value as the server has it now, in the shape of `args`. With
+   * `adopt`, edits saved elsewhere (the Spot agent, an MCP client, anyone not
+   * on the page) show up live the way a teammate's do: every field this
+   * browser has not edited since takes the saved value.
+   */
+  source?: TArgs;
+  /** Sets the form to `args` with the edits saved elsewhere brought in. */
+  adopt?: (next: TArgs) => void;
 };
+
+/**
+ * How long a browser sharing the page without leading it waits for the leader
+ * to bring a saved edit in through the room before bringing in what never
+ * arrived itself; both writing the same edit to the room would double it.
+ */
+const FOLLOWER_ADOPT_DELAY_MS = 1_500;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * `local` with the changes from `base` to `saved` in every part it has not
+ * changed itself. A part both changed keeps this browser's value, which may
+ * already hold a teammate's newer text than the save.
+ */
+function mergeSaved(base: unknown, saved: unknown, local: unknown): unknown {
+  if (stableHash(local) === stableHash(base)) return saved;
+  if (!isRecord(base) || !isRecord(saved) || !isRecord(local)) return local;
+  const merged: Record<string, unknown> = {};
+  for (const key of new Set([
+    ...Object.keys(base),
+    ...Object.keys(saved),
+    ...Object.keys(local),
+  ])) {
+    const value = mergeSaved(base[key], saved[key], local[key]);
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
+}
 
 export type AutoSaveStatus = "saved" | "saving" | "unsaved" | "error";
 
@@ -61,14 +102,17 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
   onFlushed,
   onError,
   errorMessage = "Check your connection and try again.",
+  source,
+  adopt,
 }: LocalFirstAutoSaveOptions<TArgs, TResult>) {
   const store = useSyncStore();
   const [sequencer] = useState(createAutoSaveSequencer);
   const [resetGeneration, setResetGeneration] = useState(0);
   const [intentRevision, setIntentRevision] = useState(0);
   const [resetIntentRevision, setResetIntentRevision] = useState(0);
-  const [failedSave, setFailedSave] =
-    useState<AutoSaveRequestIdentity | null>(null);
+  const [failedSave, setFailedSave] = useState<AutoSaveRequestIdentity | null>(
+    null,
+  );
   const [latestRequests, setLatestRequests] = useState(
     () => new Map<string, AutoSaveRequestState>(),
   );
@@ -81,9 +125,7 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
   const wasEnabledRef = useRef(enabled);
   const lastResetKeyRef = useRef(resetKey);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSavesRef = useRef(
-    new Map<string, PendingAutoSaveRequest>(),
-  );
+  const pendingSavesRef = useRef(new Map<string, PendingAutoSaveRequest>());
   const failedSaveRef = useRef<AutoSaveRequestIdentity | null>(null);
   const latestRequestsRef = useRef(new Map<string, AutoSaveRequestState>());
   const resetGenerationRef = useRef(0);
@@ -101,14 +143,32 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
   const onFlushedRef = useRef(onFlushed);
   const onErrorRef = useRef(onError);
   const errorMessageRef = useRef(errorMessage);
+  // The last value seen from the server. A part this browser changed since
+  // keeps its value, so the echo of its own save (trimmed or normalized by the
+  // server) never lands under the caret.
+  const sourceBaseRef = useRef(source);
+  const sourceRef = useRef(source);
+  const adoptRef = useRef(adopt);
+  // `args` after bringing in edits saved elsewhere on a clean form.
+  const adoptedArgsKeyRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const previousIntent = lastIntentRef.current;
     if (
       previousIntent.resetKey === resetKey &&
       previousIntent.valueKey !== valueKey
     ) {
-      // A teammate's edit on a clean form is saved by their browser, not again here.
-      if (
+      if (adoptedArgsKeyRef.current === stableHash(args)) {
+        // Already saved where it came from: the form is clean again.
+        const nextGeneration = resetGenerationRef.current + 1;
+        resetGenerationRef.current = nextGeneration;
+        resetIntentRevisionRef.current = intentRevisionRef.current;
+        setResetIntentRevision(intentRevisionRef.current);
+        lastSavedKeyRef.current = valueKey;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        setLastSavedKey(valueKey);
+        setResetGeneration(nextGeneration);
+      } else if (
+        // A teammate's edit on a clean form is saved by their browser, not again here.
         changedByTeammate() &&
         previousIntent.valueKey === lastSavedKeyRef.current
       ) {
@@ -120,8 +180,11 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
         setIntentRevision(nextRevision);
       }
     }
+    adoptedArgsKeyRef.current = null;
     lastIntentRef.current = { resetKey, valueKey };
     argsRef.current = args;
+    sourceRef.current = source;
+    adoptRef.current = adopt;
     valueKeyRef.current = valueKey;
     resetKeyRef.current = resetKey;
     enabledRef.current = enabled;
@@ -143,8 +206,35 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
     onError,
     onFlushed,
     resetKey,
+    source,
+    adopt,
     valueKey,
   ]);
+
+  const sourceKey = source === undefined ? null : stableHash(source);
+  useEffect(() => {
+    if (sourceKey === null) return;
+    const base = sourceBaseRef.current;
+    const saved = sourceRef.current;
+    sourceBaseRef.current = saved;
+    if (stableHash(base) === sourceKey) return;
+    const bringIn = () => {
+      const local = argsRef.current;
+      const merged = mergeSaved(base, saved, local) as TArgs;
+      const mergedKey = stableHash(merged);
+      if (mergedKey === stableHash(local)) return;
+      const latest = latestRequestsRef.current.get(resetKeyRef.current);
+      if (
+        valueKeyRef.current === lastSavedKeyRef.current &&
+        (!latest || latest.settled)
+      ) {
+        adoptedArgsKeyRef.current = mergedKey;
+      }
+      adoptRef.current?.(merged);
+    };
+    if (leadsSharedRoom()) bringIn();
+    else window.setTimeout(bringIn, FOLLOWER_ADOPT_DELAY_MS);
+  }, [sourceKey]);
 
   useLayoutEffect(() => {
     if (resetKey === lastResetKeyRef.current) return;
@@ -245,9 +335,7 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
       const queuedApplyLocal = applyLocalRef.current;
       const queuedFlush = flushRef.current;
       const result = Promise.resolve().then(() => {
-        return sequencer.run(() =>
-          queuedFlush(queuedArgs, clientMutationId),
-        );
+        return sequencer.run(() => queuedFlush(queuedArgs, clientMutationId));
       });
       const isRequestCurrent = () =>
         enabledRef.current &&
@@ -285,8 +373,7 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
               typeof errorMessageRef.current === "function"
                 ? errorMessageRef.current(error, queuedArgs)
                 : errorMessageRef.current;
-            const detail =
-              getPermissionErrorMessage(error) ?? configuredDetail;
+            const detail = getPermissionErrorMessage(error) ?? configuredDetail;
             toast.error("Changes weren’t saved", {
               id: `auto-save:${mutationName}`,
               description: detail,

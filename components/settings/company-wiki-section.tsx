@@ -29,7 +29,15 @@ import { useCurrentOrg } from "@/hooks/use-current-org";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import dayjs from "dayjs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { useSharedDoc } from "@/lib/collab/doc";
+import { leadsSharedRoom, mergeText, useSharedDoc } from "@/lib/collab/doc";
+import { useSharedValue } from "@/hooks/use-shared-value";
+
+/**
+ * How long a browser sharing the notes waits for the room to say a new
+ * revision was saved by one of its own before treating it as an edit from
+ * elsewhere (the Spot agent, an MCP client).
+ */
+const ROOM_SAVE_SETTLE_MS = 2_000;
 
 function WikiEditor({
   sourceMarkdown,
@@ -64,27 +72,48 @@ function WikiEditor({
   const savedMarkdown = useRef(sourceMarkdown);
   // Shared live, the room's text is what every screen shows; the server only
   // moves the revision. A teammate's save that missed edits (it can carry an
-  // older snapshot) is saved over with the full text, never shown.
+  // older snapshot) is saved over with the full text, never shown; a save
+  // from outside the room is merged into it.
   const shared = useSharedDoc() !== null;
   const current = useRef(markdown);
   const latest = useRef({ revision: sourceRevision, markdown: sourceMarkdown });
   const saveNow = useRef<(() => Promise<boolean>) | null>(null);
   const lastSaveOver = useRef(0);
+  // The latest revision a browser in the room saved, so the others can tell
+  // their teammates' saves from edits made elsewhere.
+  const [roomSaved, setRoomSaved] = useState(sourceRevision);
+  useSharedValue(`notes:${filename}:saved-revision`, roomSaved, setRoomSaved);
+  const roomSavedRef = useRef(roomSaved);
   useEffect(() => {
     current.current = markdown;
     latest.current = { revision: sourceRevision, markdown: sourceMarkdown };
+    roomSavedRef.current = roomSaved;
   });
   useEffect(() => {
     if (sourceRevision <= revision.current) return;
     if (shared) {
+      const base = savedMarkdown.current;
+      const saved = { revision: sourceRevision, markdown: sourceMarkdown };
       revision.current = sourceRevision;
       savedMarkdown.current = sourceMarkdown;
-      // At most every 2s, so two browsers never trade saves in a loop.
-      const now = dayjs().valueOf();
-      if (sourceMarkdown !== markdown && now - lastSaveOver.current > 2000) {
-        lastSaveOver.current = now;
-        void saveNow.current?.();
-      }
+      if (sourceMarkdown === markdown) return;
+      window.setTimeout(() => {
+        if (current.current === saved.markdown) return;
+        if (roomSavedRef.current < saved.revision) {
+          // Saved from outside the room: the leading browser adds it to the
+          // room's text, which carries it to everyone, and saves the result.
+          if (leadsSharedRoom()) {
+            edit(mergeText(base, current.current, saved.markdown));
+          }
+          return;
+        }
+        // At most every 2s, so two browsers never trade saves in a loop.
+        const now = dayjs().valueOf();
+        if (now - lastSaveOver.current > 2000) {
+          lastSaveOver.current = now;
+          void saveNow.current?.();
+        }
+      }, ROOM_SAVE_SETTLE_MS);
       return;
     }
     if (markdown !== savedMarkdown.current) return;
@@ -109,6 +138,7 @@ function WikiEditor({
       try {
         revision.current = (await onSave(value, expected)).revision;
         savedMarkdown.current = value;
+        setRoomSaved(revision.current);
       } catch (error) {
         // A teammate's save landed first: build on their revision.
         if (!shared) throw error;
@@ -127,6 +157,7 @@ function WikiEditor({
             ? newer.revision
             : (await onSave(text, newer.revision)).revision;
         savedMarkdown.current = text;
+        setRoomSaved(revision.current);
       }
     },
     errorMessage: (error) =>

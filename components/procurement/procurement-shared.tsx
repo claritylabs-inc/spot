@@ -11,7 +11,13 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
-import { FileInput, FolderInput, Loader2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  FileInput,
+  FolderInput,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
@@ -23,7 +29,6 @@ import {
 } from "@/components/broker-network/thread-contact-menu";
 import {
   EmailSubmissionAttachment,
-  EmailSubmissionNotes,
 } from "@/components/broker-network/email-submission-actions";
 import {
   LinkSuggestionBar,
@@ -42,8 +47,8 @@ import {
 } from "@claritylabs-inc/ui/components/popover";
 import { PillButton } from "@/components/ui/pill-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
-import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   StatusLabel,
   StatusTag,
@@ -467,13 +472,6 @@ export function ProcurementEmailMessage({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {!collapsed && !readOnly ? (
-              <EmailSubmissionNotes
-                source={{ threadId: message.threadId, messageId: message._id, text: body }}
-                brokerOrgId={contactSuggestion?.brokerOrgId}
-                brokerName={contactSuggestion?.brokerName}
-              />
-            ) : null}
             <time
               dateTime={dayjs(message.receivedAt).toISOString()}
               title={formatDisplayDateTime(message.receivedAt, "—")}
@@ -849,6 +847,64 @@ function FileQuoteAction({
   );
 }
 
+function ArchiveThreadAction({
+  emailThreadId,
+  requestId,
+  archived,
+  onArchived,
+}: {
+  emailThreadId: Id<"teamEmailThreads">;
+  requestId?: Id<"procurementRequests">;
+  archived: boolean;
+  onArchived: () => void;
+}) {
+  const setThreadsArchived = useMutation(api.teamInbox.setArchived);
+  const setRequestThreadsArchived = useMutation(
+    api.procurementRequests.setEmailThreadsArchived,
+  );
+  const [pending, setPending] = useState(false);
+  async function toggle(next: boolean) {
+    setPending(true);
+    try {
+      if (requestId)
+        await setRequestThreadsArchived({
+          requestId,
+          emailThreadIds: [emailThreadId],
+          archived: next,
+        });
+      else await setThreadsArchived({ threadIds: [emailThreadId], archived: next });
+      toast.success(next ? "Conversation archived" : "Conversation restored", {
+        action: { label: "Undo", onClick: () => void toggle(!next) },
+      });
+      onArchived();
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not update conversation"),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  const label = archived ? "Restore" : "Archive";
+  return (
+    <PillButton
+      size="compact"
+      type="button"
+      variant="ghost"
+      label={label}
+      aria-label={label}
+      disabled={pending}
+      onClick={() => void toggle(!archived)}
+    >
+      {archived ? (
+        <ArchiveRestore className="size-3.5" />
+      ) : (
+        <Archive className="size-3.5" />
+      )}
+    </PillButton>
+  );
+}
+
 function MoveThreadAction({
   emailThreadId,
   requestId,
@@ -1009,6 +1065,12 @@ export function ProcurementEmailDrawer({
               emailThreadId={emailThreadId}
               readOnly={readOnly}
               onFilingChange={setBusy}
+            />
+            <ArchiveThreadAction
+              emailThreadId={emailThreadId}
+              requestId={requestId}
+              archived={!!thread.thread.archivedAt}
+              onArchived={onClose}
             />
             <LinkThreadAction
               key={`link:${emailThreadId}`}

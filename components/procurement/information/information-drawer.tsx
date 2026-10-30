@@ -6,7 +6,6 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { COVERAGE_OPTIONS } from "@/lib/insurance-intake-details";
 import { type IntakeFollowupQuestion } from "@/lib/intake-followups";
-import { typeStyle } from "@/lib/typography";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import {
@@ -74,6 +73,8 @@ export function InformationDrawer({
   );
 }
 
+const SPOT = "spot";
+
 function AddQuestionDrawer({
   requestId,
   panel,
@@ -93,8 +94,14 @@ function AddQuestionDrawer({
     return coverages.size === 1 ? [...coverages][0] : "";
   });
   const [outreachId, setOutreachId] = useState<
-    Id<"procurementBrokerOutreaches"> | ""
-  >(panel.outreaches.length === 1 ? panel.outreaches[0]._id : "");
+    Id<"procurementBrokerOutreaches"> | typeof SPOT | ""
+  >(
+    panel.outreaches.length === 1
+      ? panel.outreaches[0]._id
+      : panel.outreaches.length
+        ? ""
+        : SPOT,
+  );
   const [currency, setCurrency] = useState(panel.currency);
   const [options, setOptions] = useState("");
   const [busy, setBusy] = useState(false);
@@ -135,7 +142,7 @@ function AddQuestionDrawer({
             try {
               await add({
                 requestId,
-                outreachId,
+                outreachId: outreachId === SPOT ? undefined : outreachId,
                 question: {
                   id: "provider_question",
                   section: "additional",
@@ -236,19 +243,15 @@ function AddQuestionDrawer({
               value={outreachId}
               onChange={setOutreachId}
               placeholder="Select provider"
-              options={panel.outreaches.map((item) => ({
-                value: item._id,
-                label: item.brokerName,
-              }))}
+              options={[
+                { value: SPOT, label: "Spot (application)" },
+                ...panel.outreaches.map((item) => ({
+                  value: item._id,
+                  label: item.brokerName,
+                })),
+              ]}
             />
           </Field>
-          {!panel.outreaches.length && (
-            <p
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Add a provider to this request first.
-            </p>
-          )}
         </FieldGroup>
       </form>
     </SettingsDrawer>

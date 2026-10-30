@@ -110,6 +110,7 @@ import {
 import {
   assembleFamilyGuidance,
   selectAgentToolFamilies,
+  withholdExpandToolsOnFirstStep,
 } from "./lib/agentToolSelection";
 import {
   executionOperatorToolFailure,
@@ -197,7 +198,7 @@ You are Spot's internal operator agent for authenticated Clarity Labs operators.
 OPERATING RULES:
 - Complete the requested operator task with the registered tools. Lead with the outcome.
 - Questions about insurance applications or intake submissions themselves (status, answers, who submitted, which are pending) concern procurement requests: use list_procurement_requests for the relevant client organizations and get_procurement_request for details. For such a question across all clients with no named company, call search_organizations with type=client and omit query; do not substitute the operator’s name, employer, or a company mentioned in old conversation history. Then compare intakeSubmittedAt among submitted applications and report any bounded search limits. Operator conversation history is not the application record.
-- An email or thread named by its subject, sender or wording (for example "the thread 'Acme submission: GL'") lives in the shared team inbox: call search_team_inbox with the subject words, then get_team_inbox_thread on the match; the thread shows its linked client and request, so read the request from there. Never page list_team_inbox_threads to find one thread, and never pass an email subject to list_procurement_requests. Use search_company_email only for the connected company Gmail mailboxes.
+- An email or thread named by its subject, sender or wording (for example "the thread 'Acme submission: GL'") lives in the shared team inbox: call search_team_inbox once with the subject words, then read its \`targets\` in one get_team_inbox_thread call with teamEmailThreadIds; read other results only if \`targets\` is empty. Several conversations often share one subject (for example one per provider), and \`targets\` includes all of them. Base the answer on what the counterparties actually wrote, not on the first match. The thread shows its linked client and request, so read the request from there. Never page list_team_inbox_threads to find one thread, and never pass an email subject to list_procurement_requests. Use search_company_email only for the connected company Gmail mailboxes.
 - Search by the human-readable organization or policy name when an exact target is not already known, then use the exact ID returned by the tool. Ask when results remain ambiguous.
 - Use names and titles in every human-facing response. Never display internal organization, policy, file, request, or other storage IDs.
 - Treat page context and prior messages as routing hints. Every write tool revalidates its exact target server-side.
@@ -263,7 +264,7 @@ function buildOperatorSystemPrompt(
     availableFamilies.length
       ? `\n\nTOOL FAMILIES:\nLoaded now: ${families.join(", ") || "core tools only"}. Their tools are already in your tool list; call them directly and never request them with ${EXPAND_TOOLS_NAME}. ${
           unloaded.length
-            ? `Call ${EXPAND_TOOLS_NAME} only when the task needs a tool from another family (${unloaded.join(", ")}); its tools become available on your next step.`
+            ? `Other families (${unloaded.join(", ")}) load through ${EXPAND_TOOLS_NAME} only when it is in your tool list and the task needs one of their tools; they become available on your next step. When ${EXPAND_TOOLS_NAME} is not offered, do the work with the loaded tools.`
             : "Every permitted family is loaded."
         }`
       : "",
@@ -302,6 +303,25 @@ function operatorRunRequiredFamilies(
     }
   }
   return [...new Set([...operatorToolFamiliesOf(toolNames), ...requested])];
+}
+
+/** A Jev decision a tool made internally, reported as `targetDecision`. */
+function toolDecisionTiming(outcome: unknown) {
+  const result =
+    outcome && typeof outcome === "object" && "result" in outcome
+      ? (outcome as { result?: { targetDecision?: unknown } }).result
+      : undefined;
+  const decision = result?.targetDecision as
+    | { requestId?: unknown; ms?: unknown }
+    | undefined;
+  return typeof decision?.ms === "number"
+    ? {
+        ms: decision.ms,
+        ...(typeof decision.requestId === "string"
+          ? { requestId: decision.requestId }
+          : {}),
+      }
+    : undefined;
 }
 
 // Tools offered on an earlier step keep their positions; newly offered tools
@@ -1170,7 +1190,20 @@ export const run = internalAction({
       let toolEvidence = collectToolAudit({});
       // Families whose tools this step offers; expansions land next step.
       const stepFamilies = [...familySelection.families];
-      if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
+      // The first step acts on its initial selection. A resumed step that
+      // fell back to every family keeps expand_tools: its submission may have
+      // offered it, and a replayed response can only call offered tools.
+      const expandToolsWithheld = withholdExpandToolsOnFirstStep({
+        iteration: expectedCheckpointIteration ?? 0,
+        loadedFamilyCount: stepFamilies.length,
+        replayFallback: resumed && !storedFamilies?.length,
+      });
+      timer.expandToolsWithheld = expandToolsWithheld;
+      if (
+        !expandToolsWithheld &&
+        !recovery.stopped &&
+        !exhaustedTools.has(EXPAND_TOOLS_NAME)
+      ) {
         tools[EXPAND_TOOLS_NAME] = tool({
           ...expandOperatorToolsSpec(availableFamilies, context.toolNames),
           execute: async (request, options) => {
@@ -1336,6 +1369,8 @@ export const run = internalAction({
                     );
                 if (name === "compact_context" && outcome.status === "succeeded")
                   requestedCompaction = input;
+                const decision = toolDecisionTiming(outcome);
+                if (decision) toolTiming.decision = decision;
                 return outcome;
               } catch (error) {
                 return executionOperatorToolFailure(
@@ -1467,6 +1502,7 @@ export const run = internalAction({
         phase: "query_reason",
         channel: traceChannel,
         toolFamilies: familySelection.families.join(","),
+        ...(expandToolsWithheld ? { expandToolsWithheld: true } : {}),
         toolFamilySource: familySelection.source,
       } as const;
       const system =

@@ -17,7 +17,7 @@ import {
 export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
 import { COI_DISCLAIMER, NO_OPEN_ENDED_OFFERS } from "./channelStyle";
-import { emailSkillPrompt } from "./emailSkill";
+import { emailSkillPrompt, REPLY_DRAFT_SIGN_OFF } from "./emailSkill";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
@@ -120,7 +120,7 @@ ${emailSkillPrompt({ provider: true })}
 Provider outreach for a procurement request goes through launch_procurement_provider_outreach, which applies these rules and the provider's relationship automatically.
 
 OPERATOR OUTBOUND EMAIL:
-These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
+These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator, but never sign your name; the signature is added on send. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
 These tools are for separately requested emails. A direct answer to the operator belongs in your final response; command email delivers that response automatically. A request for no changes does not authorize saving a draft.
 Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Each conversation's reply box holds a suggested reply (replySuggestion in get_team_inbox_thread); when the operator asks to change the reply on a conversation, revise it with update_team_reply_draft, and send only on an explicit instruction with reply_email_thread. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
 Attachments: use save_email_draft policyIds for explicitly requested original policy PDFs, or clientFileIds for exact stored client files (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then add its clientFileId with save_email_draft. Do not describe a certificate or file as attached until the tool returns.
@@ -1789,7 +1789,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_team_inbox_thread: defineOperatorTool({
     family: "team_inbox",
     version: 2,
-    description: "Read shared team email threads by exact ID (from search_team_inbox or list_team_inbox_threads): bodies, recipients, owner, attribution, attachments, linked client and request, in-progress drafts; may be unlinked. One teamEmailThreadId returns the full thread; teamEmailThreadIds (up to 50) returns {items, notFound} in a compact view (newest messages with trimmed bodies, shorter for larger batches; no file URLs). view overrides.",
+    description: "Read shared team email threads by exact ID (from search_team_inbox targets or list_team_inbox_threads): bodies, recipients, owner, attribution, attachments, linked client and request, in-progress drafts; may be unlinked. One teamEmailThreadId returns the full thread; teamEmailThreadIds (up to 50) returns {items, notFound} in a compact view (newest messages with trimmed bodies, shorter for larger batches; no file URLs). view overrides.",
     inputSchema: z
       .object({
         teamEmailThreadId: omittable(teamEmailThreadId),
@@ -1816,7 +1816,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   search_team_inbox: defineOperatorTool({
     family: "team_inbox",
     version: 1,
-    description: "Find shared team inbox threads by words in subjects and message bodies (subject matches first), one row per thread with a snippet and its linked client and request; up to 25 results. Use this for a named email or submission before get_team_inbox_thread. Optional exact client filter. Bounded: no result does not prove no such mail exists.",
+    description: "Find shared team inbox threads by words in subjects and message bodies, one row per thread with a snippet, counterparty, linked client and request; up to 25 results. Each row has subjectMatch (exact/partial/none, ignoring Re:/Fwd:, case and punctuation), matchedIn (subject/body) and likelyTarget; likely targets sort first. targets lists the thread IDs that are the named conversation: exact subject matches, or, when none match exactly, threads an automatic check judged to be the named conversation or the same submission (targetProbability shows its confidence). Pass targets straight to get_team_inbox_thread teamEmailThreadIds; read other results only when targets is empty. Optional exact client filter. Bounded: no result does not prove no such mail exists.",
     inputSchema: z.object({
       query: z
         .string()
@@ -1832,6 +1832,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     }),
     capability: "operator.email.read",
     effect: "read",
+    // Runs as an action so it can ask Jev about ambiguous named targets.
+    execution: "action",
     requiredRole: "operator",
     confirmation: "none",
     target: () => ({ kind: "platform", id: "team-inbox" }),
@@ -1840,7 +1842,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_team_reply_draft: defineOperatorTool({
     family: "outbound_email",
     version: 1,
-    description: "Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it, or ask to send with reply_email_thread. Plain text with greeting and a short sign-off; the signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.",
+    description: `Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it, or ask to send with reply_email_thread. Follow the email writing rules, including the provider rules when replying to a provider. Plain text except for factual bullets, opening with the greeting from the rules. ${REPLY_DRAFT_SIGN_OFF} The signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.`,
     inputSchema: z.object({
       teamEmailThreadId,
       reply: z.string().trim().min(1).max(10_000).describe("Complete plain-text reply body"),
@@ -2483,9 +2485,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_procurement_application: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_requests.",
+      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports and for copying client answers from get_procurement_information into the application; pass those answered question IDs as archiveInformationQuestionIds so they leave Information needed in the same write. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_requests.",
     inputSchema: procurementApplicationToolInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -2496,7 +2498,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Update application fields for request ${input.procurementRequestId}: ${[...Object.keys(input.answers ?? {}), ...Object.keys(input.details ?? {})].join(", ")}`,
+      `Update application fields for request ${input.procurementRequestId}: ${[...Object.keys(input.answers ?? {}), ...Object.keys(input.details ?? {})].join(", ")}${input.archiveInformationQuestionIds ? `, and archive ${input.archiveInformationQuestionIds.length} copied information question${input.archiveInformationQuestionIds.length === 1 ? "" : "s"}` : ""}`,
   }),
   update_procurement_request: defineOperatorTool({
     family: "procurement",
@@ -2982,7 +2984,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_procurement_information: defineOperatorTool({
     family: "procurement",
     version: 1,
-    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers, requirements and client forms; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
+    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers, requirements, client forms and the accepted application's unansweredApplicationQuestions; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
     inputSchema: z.object({ procurementRequestId, include: omittable(z.array(z.enum(["information", "clientOutreach"])).min(1).max(2)) }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -3011,16 +3013,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   add_procurement_information_questions: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Record questions a provider needs the client to answer, in plain client-facing words. Each belongs to one provider outreach from get_procurement_information; an identical question and scope is reused, so a question several providers ask is asked of the client once. All questions save together or none do. Nothing is sent.",
+      "Record questions the client needs to answer, in plain client-facing words. Pass the provider outreach from get_procurement_information when a provider asked; omit it for Spot's own questions, such as completing a partially filled application from its unansweredApplicationQuestions (skip facts an attached document already answers). An identical question and scope is reused, so a fact is asked of the client once. All questions save together or none do. Nothing is sent; follow with create_procurement_information_form.",
     inputSchema: z.object({
       procurementRequestId,
-      procurementOutreachId: z
-        .string()
-        .trim()
-        .min(1)
-        .describe("Provider outreach ID from list_procurement_information"),
+      procurementOutreachId: omittable(z.string().trim().min(1)).describe(
+        "Provider outreach ID from get_procurement_information; omit when Spot is asking",
+      ),
       questions: z
         .array(
           z.object({
@@ -3071,7 +3071,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
           }),
         )
         .min(1)
-        .max(20),
+        .max(40),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",

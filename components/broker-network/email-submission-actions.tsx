@@ -1,19 +1,12 @@
 "use client";
 
 import { useFollowedOpen } from "@/hooks/use-followed-state";
-import { FileInput, MoreHorizontal, NotebookPen } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@claritylabs-inc/ui/components/dropdown-menu";
+import { FileInput } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@claritylabs-inc/ui/components/popover";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import type { PdfDocumentSource } from "@/components/pdf-context";
-import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
-import { AttachmentSubmissionDialog } from "./attachment-submission-dialog";
-import { SubmissionDefaultDialog } from "./provider-submission-defaults";
+import { AttachmentSubmissionForm } from "./attachment-submission-form";
 
 type Source = {
   threadId: Id<"teamEmailThreads">;
@@ -50,7 +43,7 @@ function emailAttachmentPdfSource(
   return undefined;
 }
 
-/** The save button and right-click both open the default application form dialog. */
+/** The save button and right-click both open the default application form popover. */
 export function EmailSubmissionAttachment({
   file,
   source,
@@ -71,9 +64,9 @@ export function EmailSubmissionAttachment({
     `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:form`,
   );
   return (
-    <>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <div
-        className="inline-flex items-center gap-0.5"
+        className="inline-flex"
         onContextMenu={(event) => {
           event.preventDefault();
           onOpenChange(true);
@@ -83,20 +76,15 @@ export function EmailSubmissionAttachment({
           attachment={{ filename: file.name, contentType: file.contentType }}
           url={file.url}
           pdfSource={emailAttachmentPdfSource(source.messageId, file)}
+          action={{
+            label: `Use ${file.name} as default application form`,
+            icon: FileInput,
+            renderButton: (button) => <PopoverTrigger render={button} />,
+          }}
         />
-        <PillButton
-          variant="icon"
-          size="compact"
-          iconOnly
-          label={`Use ${file.name} as default application form`}
-          onClick={() => onOpenChange(true)}
-        >
-          <FileInput />
-        </PillButton>
       </div>
-      {open ? (
-        <AttachmentSubmissionDialog
-          open={open}
+      <PopoverContent align="start" className="w-80 p-3">
+        <AttachmentSubmissionForm
           onOpenChange={onOpenChange}
           source={source}
           file={file}
@@ -104,49 +92,7 @@ export function EmailSubmissionAttachment({
           defaultBrokerName={brokerName}
           defaultCoverageCodes={coverageCodes}
         />
-      ) : null}
-    </>
-  );
-}
-
-export function EmailSubmissionNotes({
-  source,
-  brokerOrgId,
-  brokerName,
-}: Provider & { source: Source }) {
-  const { open, onOpenChange: setOpen } = useFollowedOpen(
-    `email:${source.messageId}:submission-notes`,
-  );
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <PillButton
-              variant="icon"
-              size="compact"
-              iconOnly
-              label="Message options"
-            />
-          }
-        >
-          <MoreHorizontal />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setOpen(true)}>
-            <NotebookPen /> Save submission questions or notes…
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {open ? (
-        <SubmissionDefaultDialog
-          open={open}
-          onOpenChange={setOpen}
-          source={source}
-          defaultBrokerOrgId={brokerOrgId}
-          defaultBrokerName={brokerName}
-        />
-      ) : null}
-    </>
+      </PopoverContent>
+    </Popover>
   );
 }

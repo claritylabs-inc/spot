@@ -118,6 +118,14 @@ const applicationDetails = companyDetails
   })
   .strict();
 
+const archiveInformationQuestionIds = z
+  .array(z.string().trim().min(1))
+  .min(1)
+  .max(40)
+  .describe(
+    "Answered supplementary question IDs from get_procurement_information whose facts this update copies into the application; they are archived in the same write",
+  );
+
 export const procurementApplicationInputSchema = z
   .object({
     procurementRequestId: z.string(),
@@ -125,6 +133,7 @@ export const procurementApplicationInputSchema = z
     expectedUpdatedAt: z.number(),
     answers: applicationAnswers.optional(),
     details: applicationDetails.optional(),
+    archiveInformationQuestionIds: archiveInformationQuestionIds.optional(),
   })
   .strict()
   .refine(
@@ -165,6 +174,9 @@ export const procurementApplicationToolInputSchema = z
       hint: `Changed typed sections only; each supplied key replaces its whole value. Keys: ${fieldNames(applicationDetails).join(", ")}. Shapes and coverage limit keys: describe_record_fields.`,
       named: APPLICATION_NAMES,
     }),
+    archiveInformationQuestionIds: archiveInformationQuestionIds
+      .nullish()
+      .transform((value) => value ?? undefined),
   })
   .strict()
   .refine(

@@ -443,6 +443,7 @@ function OperatorReplyComposer({
             value={text}
             disabled={sending}
             readOnly={locked}
+            footer={signature}
             suggestions={blankValues}
             suggesting={suggestingBlanks}
             onChange={update}
@@ -452,11 +453,6 @@ function OperatorReplyComposer({
               if (!hasText && !locked) setOpen(false);
             }}
           />
-          {signature ? (
-            <p className={`px-4 pb-2 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>
-              {signature}
-            </p>
-          ) : null}
           {preview ? (
             <div className="space-y-2 px-4 pb-2">
               <ShowQuotedButton

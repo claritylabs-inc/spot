@@ -120,6 +120,11 @@ function LoadedProfile({
     false,
   );
   const [notesToolbar, setNotesToolbar] = useState<HTMLDivElement | null>(null);
+  const serverVersion = wiki.businessProfile?.submittedAt ?? 0;
+  const savedAnswers = wiki.businessProfile?.answers ?? {
+    legalName: support.name,
+    website: support.website ?? "",
+  };
   const autoSave = useLocalFirstAutoSave({
     mutationName: "orgWiki.updateBusinessProfileForOperator",
     args: { account: draftAccount, answers, details },
@@ -138,13 +143,25 @@ function LoadedProfile({
       });
       version.current = result;
     },
+    // Edits from the Spot agent or an MCP client show up as they are saved.
+    source: {
+      account,
+      answers: savedAnswers,
+      details:
+        wiki.businessProfile?.details ?? detailsFromAnswers(savedAnswers),
+    },
+    adopt: (next) => {
+      setDraftAccount(next.account);
+      setAnswers(next.answers);
+      setDetails(next.details);
+      version.current = { version: serverVersion, account };
+    },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update profile"),
   });
   // A teammate editing alongside saves their own edits; their save is the
   // version this form builds on once it has nothing unsaved, or whenever the
   // form is shared live (it then holds their edits too).
-  const serverVersion = wiki.businessProfile?.submittedAt ?? 0;
   const sharedLive = useSharedDoc() !== null;
   const clean = autoSave.status === "saved" || sharedLive;
   useEffect(() => {

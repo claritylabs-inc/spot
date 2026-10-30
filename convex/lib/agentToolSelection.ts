@@ -238,6 +238,24 @@ export async function selectAgentToolFamilies<Family extends string>(
   }
 }
 
+/**
+ * Whether a run's first step omits expand_tools: its initial selection
+ * (intent, Jev or carryover) already loaded a domain family, so the model acts
+ * with what it has. A core-only step keeps it. A resumed step whose stored
+ * families were missing falls back to every family and keeps it too, because
+ * its submission may have offered expand_tools and a replayed response may
+ * call it; offering more tools than the submission is safe, fewer is not.
+ */
+export function withholdExpandToolsOnFirstStep(step: {
+  iteration: number;
+  loadedFamilyCount: number;
+  replayFallback: boolean;
+}) {
+  return (
+    step.iteration === 0 && step.loadedFamilyCount > 0 && !step.replayFallback
+  );
+}
+
 export type ExpandToolsOptions<Family extends string> = {
   /** Retired family names still accepted from models and stored audits. */
   aliases?: Readonly<Record<string, Family>>;

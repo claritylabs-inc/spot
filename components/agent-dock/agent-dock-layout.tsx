@@ -90,6 +90,7 @@ function ResizeHandle({
   viewportSize,
   minSize,
   minExpandedSize = 0,
+  extraSize = 0,
   maxSize,
   onDrag,
 }: {
@@ -100,6 +101,8 @@ function ResizeHandle({
   minSize: number;
   /** Smallest expanded pixel size; dragging below it heads for collapsed. */
   minExpandedSize?: number;
+  /** Pixels added to the saved size while shown, such as an open artifact. */
+  extraSize?: number;
   /** Pixel size of the dock in full screen. */
   maxSize: number;
   onDrag: (sizePx: number | null) => void;
@@ -122,7 +125,7 @@ function ResizeHandle({
       ),
     );
   const release = (sizePx: number) => {
-    const next = sizePx / viewportSize;
+    const next = (sizePx - extraSize) / viewportSize;
     const collapseBelow = (minFraction + minSize / viewportSize) / 2;
     const fullAbove = (maxFraction + maxSize / viewportSize) / 2;
     if (next < collapseBelow) dock.setMode("collapsed");
@@ -152,7 +155,9 @@ function ResizeHandle({
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        onDrag(Math.round(Math.max(minExpandedSize, sizeAt(event))));
+        onDrag(
+          Math.round(Math.max(minExpandedSize + extraSize, sizeAt(event))),
+        );
       }}
       onPointerUp={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
@@ -460,11 +465,23 @@ export function AgentDockLayout({
   const minExpandedWidth =
     (dock.tabsCollapsed ? AGENT_DOCK_RAIL_WIDTH : dock.tabsWidth) +
     RIGHT_CHAT_MIN_WIDTH;
+  // An open artifact widens the right dock so the chat keeps its width and the
+  // artifact card sits beside it.
+  const [artifactExtra, setArtifactExtra] = useState(0);
+  const [prevArtifactOpen, setPrevArtifactOpen] = useState(false);
+  const artifactBesideChat = right && artifactOpen && mode !== "collapsed";
+  if (prevArtifactOpen !== artifactBesideChat) {
+    setPrevArtifactOpen(artifactBesideChat);
+    if (artifactBesideChat) setArtifactExtra(readArtifactWidth());
+  }
+  const baseDockSize = right
+    ? Math.max(minExpandedWidth, Math.round(viewport.width * dock.width))
+    : Math.round(viewport.height * dock.height);
   const expandedDockSize =
     dragSize ??
-    (right
-      ? Math.max(minExpandedWidth, Math.round(viewport.width * dock.width))
-      : Math.round(viewport.height * dock.height));
+    (artifactBesideChat && mode === "expanded"
+      ? Math.min(baseDockSize + artifactExtra, fullDockSize)
+      : baseDockSize);
   const dockSize =
     mode === "collapsed"
       ? barSize
@@ -516,6 +533,15 @@ export function AgentDockLayout({
       ? `0px ${restingRadius}px ${restingRadius}px 0px`
       : `0px 0px ${restingRadius}px ${restingRadius}px`;
   const setMode = dock.setMode;
+  // Mid-transition the body keeps its widest size, so the narrowing dock
+  // clips it behind the card instead of reflowing the text.
+  const [settledSize, setSettledSize] = useState(dockSize);
+  const transitioning = right && mode !== settledMode;
+  if (!transitioning && settledSize !== dockSize) setSettledSize(dockSize);
+  const bodyWidth = transitioning
+    ? Math.max(settledSize, dockSize) -
+      (dock.tabsCollapsed ? AGENT_DOCK_RAIL_WIDTH : dock.tabsWidth)
+    : undefined;
   const wasDetailOpenRef = useRef(detailPanelOpen);
 
   const wasArtifactOpenRef = useRef(artifactOpen);
@@ -551,7 +577,7 @@ export function AgentDockLayout({
           ref={setRightSection}
           data-agent-dock
           aria-label="Spot agent"
-          className="absolute inset-y-0 right-0 flex"
+          className="absolute inset-y-0 right-0 flex justify-end"
           initial={false}
           animate={{ width: dockSize }}
           transition={transition}
@@ -563,13 +589,18 @@ export function AgentDockLayout({
               viewportSize={viewport.width}
               minSize={barSize}
               minExpandedSize={minExpandedWidth}
+              extraSize={artifactBesideChat ? artifactExtra : 0}
               maxSize={fullDockSize}
               onDrag={setDragSize}
             />
           ) : null}
           {showBody ? (
             <motion.div
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col overflow-hidden",
+                bodyWidth === undefined ? "flex-1" : "shrink-0",
+              )}
+              style={bodyWidth === undefined ? undefined : { width: bodyWidth }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.18 }}
@@ -584,8 +615,7 @@ export function AgentDockLayout({
                 mode={mode}
                 onActions={setActions}
                 artifactPanelRef={artifactPanelRef}
-                // Too narrow beside the page for a second column.
-                artifactPlacement="overlay"
+                artifactPlacement={artifactPlacement}
                 artifactOpen={artifactOpen}
               />
             </motion.div>

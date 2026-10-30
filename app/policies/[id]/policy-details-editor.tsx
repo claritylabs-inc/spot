@@ -481,26 +481,36 @@ export function PolicyDetailsEditor({
 
   const autoSave = useLocalFirstAutoSave({
     mutationName: `policy.updatePolicyDetails.${policy._id}.${section}`,
-    args: { id: policy._id, update },
+    args: draft,
     valueKey: JSON.stringify(update),
     resetKey: `${policy._id}:${section}`,
     canSave: !producerEmailInvalid && !producerPhoneInvalid,
     autoSave: inline,
-    flush: (args) => updatePolicyDetails(args),
-    applyLocal: (store, args) => {
+    flush: (next) =>
+      updatePolicyDetails({
+        id: policy._id,
+        update: updateFromDraft(section, next),
+      }),
+    applyLocal: (store, next) => {
       for (const cacheName of ["policies.get", "policies.getSummary"]) {
         const collection = cachedQueryCollectionFor<Record<
           string,
           unknown
         > | null>(cacheName);
-        const argsKey = cachedQueryArgsKey({ id: args.id });
+        const argsKey = cachedQueryArgsKey({ id: policy._id });
         const current = store.getCollection(collection, argsKey)?.[0]?.value;
         if (!current || typeof current !== "object") continue;
         void store.upsertCollection(collection, argsKey, [
-          cachedQueryResult(argsKey, applyUpdateToPolicy(current, args.update)),
+          cachedQueryResult(
+            argsKey,
+            applyUpdateToPolicy(current, updateFromDraft(section, next)),
+          ),
         ]);
       }
     },
+    // Facts the Spot agent or an MCP client confirms show up as they are saved.
+    source: draftFromPolicy(policy),
+    adopt: setDraft,
     errorMessage: "The policy details could not be saved.",
   });
   const saveNow = autoSave.saveNow;

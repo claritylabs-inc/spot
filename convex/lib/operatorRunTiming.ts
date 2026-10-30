@@ -34,6 +34,10 @@ const toolTimingValidator = v.object({
   executeMs: v.number(),
   bookkeepingMs: v.optional(v.number()),
   status: v.string(),
+  // A Jev decision made inside the tool, such as search_team_inbox targets.
+  decision: v.optional(
+    v.object({ requestId: v.optional(v.string()), ms: v.number() }),
+  ),
 });
 
 /** Finish reason carried by an AI SDK result or a model output error. */
@@ -84,6 +88,8 @@ export const operatorRunTimingValidator = v.object({
   // The mutation that ended the previous segment in this action; its own
   // duration is only known once it returns.
   previousCheckpointMs: v.optional(v.number()),
+  // The run's first step was offered without expand_tools.
+  expandToolsWithheld: v.optional(v.boolean()),
 });
 
 export const operatorRunTimingEndValidator = v.union(
@@ -109,6 +115,7 @@ export class OperatorStepTimer {
   runnerAttempt = 0;
   iteration = 0;
   routerRetryCount = 0;
+  expandToolsWithheld = false;
   readonly tools: OperatorToolTiming[] = [];
   private readonly modelCalls: ModelCallTiming[] = [];
   private readonly phases = new Map<
@@ -246,6 +253,7 @@ export class OperatorStepTimer {
       })),
       tools: this.tools.slice(0, MAX_TOOLS),
       modelCalls: this.modelCalls.slice(0, MAX_MODEL_CALLS),
+      ...(this.expandToolsWithheld ? { expandToolsWithheld: true } : {}),
       ...(this.previousCheckpointMs !== undefined
         ? { previousCheckpointMs: this.previousCheckpointMs }
         : {}),
