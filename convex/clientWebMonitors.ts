@@ -51,7 +51,7 @@ async function liveClient(ctx: QueryCtx, orgId: Id<"organizations">) {
 }
 
 /** The monitor that is running or being created for a client, if any. */
-async function currentMonitor(ctx: QueryCtx, orgId: Id<"organizations">) {
+export async function currentMonitor(ctx: QueryCtx, orgId: Id<"organizations">) {
   const rows = await ctx.db
     .query("clientWebMonitors")
     .withIndex("by_org", (q) => q.eq("orgId", orgId))
@@ -229,8 +229,19 @@ export const beginCreateInternal = internalMutation({
       createdAt: dayjs().valueOf(),
       createdByUserId: args.userId,
     });
+    // A create that never finishes would answer callbacks 503 forever.
+    await ctx.scheduler.runAfter(
+      CLIENT_WEB_MONITOR_PENDING_MS,
+      internal.clientWebMonitors.markFailedInternal,
+      { monitorId, error: "Creating the monitor did not finish." },
+    );
     return { monitorId, name: org.name, website: org.website };
   },
+});
+
+export const normalizeOrgIdInternal = internalQuery({
+  args: { orgId: v.string() },
+  handler: async (ctx, args) => ctx.db.normalizeId("organizations", args.orgId),
 });
 
 export const markActiveInternal = internalMutation({

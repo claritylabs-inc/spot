@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import {
   ClRouterRequestError,
   clRouterCancelMonitor,
@@ -36,109 +36,120 @@ async function assertRouterSupportsMonitors() {
     );
 }
 
+type CreatedMonitor = {
+  orgId: Id<"organizations">;
+  monitorId: Id<"clientWebMonitors">;
+  status: "active";
+  frequency: string;
+};
+type CancelledMonitor = {
+  orgId: Id<"organizations">;
+  monitorId: Id<"clientWebMonitors">;
+  status: "cancelled";
+};
+
+async function clientOrgId(
+  ctx: ActionCtx,
+  orgId: string,
+): Promise<Id<"organizations">> {
+  const normalized = await ctx.runQuery(
+    internal.clientWebMonitors.normalizeOrgIdInternal,
+    { orgId },
+  );
+  if (!normalized)
+    throw new NoWriteInputError("invalid_identifier", "Invalid organization ID");
+  return normalized;
+}
+
 /** Starts the client's router monitor; the raw callback token never leaves this action. */
+export async function createClientWebMonitor(
+  ctx: ActionCtx,
+  args: { orgId: string; userId: Id<"users">; frequency?: string },
+): Promise<CreatedMonitor> {
+  const orgId = await clientOrgId(ctx, args.orgId);
+  const frequency = args.frequency ?? DEFAULT_CLIENT_WEB_MONITOR_FREQUENCY;
+  if (!isClientWebMonitorFrequency(frequency))
+    throw new NoWriteInputError(
+      "invalid_frequency",
+      "Frequency must be between 1h and 30d, such as 6h, 1d or 1w.",
+    );
+  await assertRouterSupportsMonitors();
+  const token = newClientWebMonitorToken();
+  const pending: {
+    monitorId: Id<"clientWebMonitors">;
+    name: string;
+    website?: string;
+  } = await ctx.runMutation(internal.clientWebMonitors.beginCreateInternal, {
+    orgId,
+    userId: args.userId,
+    frequency,
+    tokenHash: await routerJobTokenHash(token),
+  });
+  const website = clientWebMonitorPublicWebsite(pending.website);
+  try {
+    const created = await clRouterCreateMonitor({
+      orgId,
+      input: {
+        entity: { name: pending.name, ...(website ? { website } : {}) },
+        query: CLIENT_WEB_MONITOR_QUERY,
+        fields: CLIENT_WEB_MONITOR_FIELDS,
+        frequency,
+      },
+      callbackUrl: `${callbackSiteUrl()}${CLIENT_WEB_MONITOR_CALLBACK_PATH}?token=${token}`,
+      config: { depth: "fast" },
+    });
+    if (created.status !== "active") throw new Error("Monitor is not active");
+    await ctx.runMutation(internal.clientWebMonitors.markActiveInternal, {
+      monitorId: pending.monitorId,
+      routerMonitorId: created.monitorId,
+    });
+  } catch {
+    await ctx.runMutation(internal.clientWebMonitors.markFailedInternal, {
+      monitorId: pending.monitorId,
+      error: "The router could not create the monitor.",
+    });
+    throw new Error(
+      "The web monitor could not be created: the router did not accept it.",
+    );
+  }
+  return { orgId, monitorId: pending.monitorId, status: "active", frequency };
+}
+
+export async function cancelClientWebMonitor(
+  ctx: ActionCtx,
+  args: { orgId: string },
+): Promise<CancelledMonitor> {
+  const orgId = await clientOrgId(ctx, args.orgId);
+  const monitor: {
+    monitorId: Id<"clientWebMonitors">;
+    routerMonitorId: string;
+  } = await ctx.runMutation(internal.clientWebMonitors.beginCancelInternal, {
+    orgId,
+  });
+  // A monitor the router no longer knows can't deliver callbacks, so the row
+  // is cancelled either way.
+  await clRouterCancelMonitor(monitor.routerMonitorId).catch((error) => {
+    if (!(error instanceof ClRouterRequestError) || error.status !== 404)
+      throw error;
+  });
+  await ctx.runMutation(internal.clientWebMonitors.markCancelledInternal, {
+    monitorId: monitor.monitorId,
+  });
+  return { orgId, monitorId: monitor.monitorId, status: "cancelled" };
+}
+
 export const create = internalAction({
   args: {
     orgId: v.id("organizations"),
     userId: v.id("users"),
     frequency: v.optional(v.string()),
   },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{
-    orgId: Id<"organizations">;
-    monitorId: Id<"clientWebMonitors">;
-    status: "active";
-    frequency: string;
-  }> => {
-    const frequency = args.frequency ?? DEFAULT_CLIENT_WEB_MONITOR_FREQUENCY;
-    if (!isClientWebMonitorFrequency(frequency))
-      throw new NoWriteInputError(
-        "invalid_frequency",
-        "Frequency must be between 1h and 30d, such as 6h, 1d or 1w.",
-      );
-    await assertRouterSupportsMonitors();
-    const token = newClientWebMonitorToken();
-    const pending: {
-      monitorId: Id<"clientWebMonitors">;
-      name: string;
-      website?: string;
-    } = await ctx.runMutation(
-      internal.clientWebMonitors.beginCreateInternal,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        frequency,
-        tokenHash: await routerJobTokenHash(token),
-      },
-    );
-    const website = clientWebMonitorPublicWebsite(pending.website);
-    try {
-      const created = await clRouterCreateMonitor({
-        orgId: args.orgId,
-        input: {
-          entity: { name: pending.name, ...(website ? { website } : {}) },
-          query: CLIENT_WEB_MONITOR_QUERY,
-          fields: CLIENT_WEB_MONITOR_FIELDS,
-          frequency,
-        },
-        callbackUrl: `${callbackSiteUrl()}${CLIENT_WEB_MONITOR_CALLBACK_PATH}?token=${token}`,
-        config: { depth: "fast" },
-      });
-      if (created.status !== "active") throw new Error("Monitor is not active");
-      await ctx.runMutation(internal.clientWebMonitors.markActiveInternal, {
-        monitorId: pending.monitorId,
-        routerMonitorId: created.monitorId,
-      });
-    } catch {
-      await ctx.runMutation(internal.clientWebMonitors.markFailedInternal, {
-        monitorId: pending.monitorId,
-        error: "The router could not create the monitor.",
-      });
-      throw new Error(
-        "The web monitor could not be created: the router did not accept it.",
-      );
-    }
-    return {
-      orgId: args.orgId,
-      monitorId: pending.monitorId,
-      status: "active",
-      frequency,
-    };
-  },
+  handler: (ctx, args): Promise<CreatedMonitor> =>
+    createClientWebMonitor(ctx, args),
 });
 
 export const cancel = internalAction({
   args: { orgId: v.id("organizations") },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{
-    orgId: Id<"organizations">;
-    monitorId: Id<"clientWebMonitors">;
-    status: "cancelled";
-  }> => {
-    const monitor: {
-      monitorId: Id<"clientWebMonitors">;
-      routerMonitorId: string;
-    } = await ctx.runMutation(
-      internal.clientWebMonitors.beginCancelInternal,
-      { orgId: args.orgId },
-    );
-    // A monitor the router no longer knows can't deliver callbacks, so the
-    // row is cancelled either way.
-    await clRouterCancelMonitor(monitor.routerMonitorId).catch((error) => {
-      if (!(error instanceof ClRouterRequestError) || error.status !== 404)
-        throw error;
-    });
-    await ctx.runMutation(internal.clientWebMonitors.markCancelledInternal, {
-      monitorId: monitor.monitorId,
-    });
-    return {
-      orgId: args.orgId,
-      monitorId: monitor.monitorId,
-      status: "cancelled",
-    };
-  },
+  handler: (ctx, args): Promise<CancelledMonitor> =>
+    cancelClientWebMonitor(ctx, args),
 });

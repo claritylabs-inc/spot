@@ -19,7 +19,8 @@ action execution) calls `internal.actions.clientWebMonitors.create` or
    `web_monitoring_unavailable`; nothing else in Spot changes.
 2. It generates a random 32-byte token, stores only its SHA-256 hash on a
    `pending` `clientWebMonitors` row (`beginCreateInternal`: live client, one
-   monitor per client, a `pending` row older than ten minutes stops counting)
+   monitor per client, a `pending` row older than ten minutes stops counting; the same create schedules a
+   watchdog that marks the row `failed` if it is still `pending` after ten minutes)
    and builds `callbackUrl = <callbackSiteUrl()>/router-monitors/events?token=<token>`.
    The raw token exists only in that URL, in the router's monitor row; it is
    never stored in Spot or logged.
@@ -41,11 +42,11 @@ action execution) calls `internal.actions.clientWebMonitors.create` or
 
 | Check | Result |
 | --- | --- |
-| Missing, malformed, unknown, cancelled or failed token (index `by_token_hash`) | 404 |
+| Missing, malformed, unknown, cancelled or failed token (index `by_token_hash`), including a `pending` row the watchdog has failed | 404 |
 | Body over 256 KiB (`readBoundedRequestBody`) | 413 |
 | Invalid JSON, wrong `contractVersion`, any unknown field | 400 |
 | Payload `monitorId` is not this token's router monitor, or `orgId` differs | 409, nothing written |
-| Monitor still `pending` (router ID not yet recorded) | 503, the router retries |
+| Monitor `pending` within its ten-minute create window (router ID not yet recorded) | 503, the router retries |
 | Duplicate `deliveryId` for the monitor | 200, nothing written |
 | Applied | 200 |
 
