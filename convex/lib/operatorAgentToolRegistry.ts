@@ -2952,7 +2952,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Read the first emails launch_procurement_provider_outreach would send for one company-linked request: the request's mail-merge template (subject and body with {{variables}}) and, per provider, the recipient, whether it will send or why not, the merge values, and its email source. A provider's own draft (tailored by Spot or written with update_procurement_provider_emails) wins over the template; its merged body is returned. Omit brokerOrgIds for every matched provider (up to 50). Use list_procurement_provider_matches to find providers by fit; use this before revising or sending.",
+      "Read the first emails launch_procurement_provider_outreach would send for one company-linked request: the request's mail-merge template (subject and body with {{variables}}) and, per provider, the recipient, whether it will send or why not, the merge values, and its email source. A provider's own draft (tailored by Spot, edited by the operator in a mail merge preview, or written with update_procurement_provider_emails) wins over the template; its merged body is returned. Omit brokerOrgIds for every matched provider (up to 50). Use list_procurement_provider_matches to find providers by fit; use this before revising or sending.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgIds: omittable(z.array(organizationId).min(1).max(50)),

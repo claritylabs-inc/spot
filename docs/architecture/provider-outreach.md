@@ -70,7 +70,7 @@ Send and Send to all matched open the provider email composer
 compose fields: From picker, To (provider contact select, or one pill per provider
 for a mail merge, each removable and previewable; every provider contact pill shows the provider's logo and the contact's name, address on hover), fixed Always CC, Subject, the
 reply editor with merge-variable chips and `[needs: …]` blanks, the sender
-signature, and the shared send bar and Follow up control from `components/email/email-composer.tsx` (request cadence or custom). Preview opens the exact merged email in its own panel beside the composer (`previewPanel` shell slot, desktop; inline below lg), with previous/next for a mail merge. Every
+signature, and the shared send bar and Follow up control from `components/email/email-composer.tsx` (request cadence or custom). Preview opens the exact merged email in its own panel beside the composer (`previewPanel` shell slot, desktop; inline below lg), with previous/next for a mail merge. In a mail merge, the preview panel is always editable and changes only that provider's email (pencil on its pill; "Use the template" in the panel footer reverts): the edit is saved as that provider's draft (`providerOutreachDrafts.saveEdit`, source `operator`) so the AI panel reads and revises it, and launches pass it as `overrides`, which win over the template and are covered by the plan fingerprint. Every
 email goes to one provider; a mail merge never puts several providers on one email.
 
 `convex/lib/providerOutreachMerge.ts` owns the variables (`{{first_name}}`,
