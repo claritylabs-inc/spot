@@ -44,6 +44,8 @@ type ShellPanelsValue = {
   register: (id: string, kind: ShellPanelKind, wide: boolean) => void;
   unregister: (id: string) => void;
   focus: (id: string) => void;
+  /** Whether `id` is the panel used most recently. */
+  isFront: (id: string) => boolean;
   setCloseHandler: (id: string, close: (() => void) | undefined) => void;
 };
 
@@ -96,13 +98,18 @@ export function ShellPanelsProvider({
   const focus = useCallback((id: string) => {
     const now = dayjs().valueOf();
     setPanels((current) =>
-      current.some((panel) => panel.id === id)
+      current.some((panel) => panel.id === id) && !frontOf(current, id)
         ? current.map((panel) =>
             panel.id === id ? { ...panel, focusedAt: now } : panel,
           )
         : current,
     );
   }, []);
+  const latest = useRef(panels);
+  useEffect(() => {
+    latest.current = panels;
+  });
+  const isFront = useCallback((id: string) => frontOf(latest.current, id), []);
 
   const setCloseHandler = useCallback(
     (id: string, close: (() => void) | undefined) => {
@@ -121,13 +128,28 @@ export function ShellPanelsProvider({
   }, [maxPanels, panels]);
 
   const value = useMemo(
-    () => ({ panels, host, register, unregister, focus, setCloseHandler }),
-    [focus, host, panels, register, setCloseHandler, unregister],
+    () => ({
+      panels,
+      host,
+      register,
+      unregister,
+      focus,
+      isFront,
+      setCloseHandler,
+    }),
+    [focus, host, isFront, panels, register, setCloseHandler, unregister],
   );
   return (
     <ShellPanelsContext.Provider value={value}>
       {children}
     </ShellPanelsContext.Provider>
+  );
+}
+
+function frontOf(panels: ShellPanelEntry[], id: string) {
+  const target = panels.find((panel) => panel.id === id);
+  return (
+    !!target && panels.every((panel) => panel.focusedAt <= target.focusedAt)
   );
 }
 
@@ -154,23 +176,33 @@ export function ShellPanelScope({
 
 /**
  * For content inside a panel: `focus` scrolls the panel into view (or brings
- * it to the front on phones); `setOnClose` lets the shell close it.
+ * it to the front on phones); `setOnClose` lets the shell close it;
+ * `ownsEscape` tells whether an Escape press should close this panel: the one
+ * holding focus, or else the one used most recently.
  */
 export function useShellPanel() {
   const id = useContext(ShellPanelIdContext);
   const panels = useShellPanels();
   const focus = panels?.focus;
+  const isFront = panels?.isFront;
   const setCloseHandler = panels?.setCloseHandler;
   return useMemo(
     () =>
-      id && focus && setCloseHandler
+      id && focus && isFront && setCloseHandler
         ? {
             focus: () => focus(id),
             setOnClose: (close: (() => void) | undefined) =>
               setCloseHandler(id, close),
+            ownsEscape: (event: Event | undefined) => {
+              const holder =
+                event?.target instanceof Element
+                  ? event.target.closest<HTMLElement>("[data-shell-panel]")
+                  : null;
+              return holder ? holder.dataset.shellPanel === id : isFront(id);
+            },
           }
         : null,
-    [focus, id, setCloseHandler],
+    [focus, id, isFront, setCloseHandler],
   );
 }
 
@@ -345,6 +377,32 @@ export function ShellPanelsLayout({
     row.scrollTo({ left: target, behavior: reduceMotion ? "auto" : "smooth" });
   }, [frontFocusedAt, frontId, sheets]);
 
+  // Shade the edges the row can scroll toward.
+  const [edges, setEdges] = useState({ start: false, end: false });
+  useEffect(() => {
+    const row = rowRef.current;
+    if (sheets || !row) return;
+    const update = () => {
+      const start = row.scrollLeft > 1;
+      const end = row.scrollLeft < row.scrollWidth - row.clientWidth - 1;
+      setEdges((current) =>
+        current.start === start && current.end === end
+          ? current
+          : { start, end },
+      );
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(row);
+    for (const child of row.children) observer.observe(child);
+    row.addEventListener("scroll", update, { passive: true });
+    return () => {
+      observer.disconnect();
+      row.removeEventListener("scroll", update);
+    };
+  }, [panels, sheets]);
+  const edgeShade =
+    "pointer-events-none sticky z-30 w-3 shrink-0 from-foreground/8 to-transparent transition-opacity";
+
   return (
     <div
       ref={rowRef}
@@ -355,6 +413,14 @@ export function ShellPanelsLayout({
           : "table-scrollbar overflow-x-auto overflow-y-hidden overscroll-x-contain",
       )}
     >
+      <div
+        aria-hidden
+        className={cn(
+          edgeShade,
+          "left-0 -mr-3 bg-linear-to-r",
+          (sheets || !edges.start) && "opacity-0",
+        )}
+      />
       <div
         inert={sheets && panels.length > 0}
         className="flex h-full min-w-0 flex-1 flex-col overflow-hidden"
@@ -384,6 +450,7 @@ export function ShellPanelsLayout({
           <div
             key={panel.id}
             data-shell-panel={panel.id}
+            onPointerDownCapture={() => shellPanels?.focus(panel.id)}
             className={cn(
               "absolute inset-0 z-40 flex bg-background",
               panel.id !== front?.id && "hidden",
@@ -396,6 +463,7 @@ export function ShellPanelsLayout({
             key={panel.id}
             data-shell-panel={panel.id}
             data-shell-panel-size={size.key}
+            onPointerDownCapture={() => shellPanels?.focus(panel.id)}
             className="relative flex h-full"
             style={{
               flex: `0 ${scrolling ? 0 : 1} ${width}px`,
@@ -414,6 +482,14 @@ export function ShellPanelsLayout({
           </div>
         );
       })}
+      <div
+        aria-hidden
+        className={cn(
+          edgeShade,
+          "right-0 -ml-3 bg-linear-to-l",
+          (sheets || !edges.end) && "opacity-0",
+        )}
+      />
     </div>
   );
 }

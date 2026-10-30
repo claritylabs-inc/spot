@@ -53,8 +53,12 @@ export function procurementRequestPageContext(args: {
   clientName?: string;
   status?: string;
   section?: ProcurementContextPart;
-  open?: ProcurementContextPart | null;
+  /** Open drawers, most recent first. */
+  open?: ReadonlyArray<ProcurementContextPart | null>;
 }): PageContext {
+  const open = (args.open ?? []).filter(
+    (part): part is ProcurementContextPart => part != null,
+  );
   return {
     pageType: "procurement_request",
     entityId: args.requestId,
@@ -65,10 +69,15 @@ export function procurementRequestPageContext(args: {
           : "Current procurement request",
       },
       args.status ? { text: `Status: ${args.status}` } : null,
-      // The drawer's records come first: it covers the section.
-      args.open
-        ? { ...args.open, text: `Open drawer: ${args.open.text}` }
-        : null,
+      // The drawers' records come first: they cover the section.
+      ...open.map((part, index) =>
+        index === 0
+          ? {
+              ...part,
+              text: `Open drawer${open.length > 1 ? "s" : ""}: ${part.text}`,
+            }
+          : part,
+      ),
       args.section
         ? { ...args.section, text: `Viewing ${args.section.text}` }
         : null,

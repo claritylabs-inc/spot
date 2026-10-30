@@ -1,5 +1,17 @@
 # Platform workflow QA
 
+## Procurement drawers side by side — October 30, 2026
+
+Native-local stack, operator in headless Chrome, cancelled fixture request.
+Provider drawer, a PDF from its Files tab, Internal notes and Share link opened
+together as four panels. At 1720 three panels already scrolled the row (361px)
+and the fourth scrolled to 781px, each newly opened panel brought into view, with
+the scrolled-past edge shaded; at 1100 the same four scrolled to 1401px. Escape
+with focus in the provider drawer closed only it; Escape from the page then
+closed only the most recent panel (Share link). Phones still show one panel at a
+time (opening the PDF from the drawer covered it; closing returned to it). No
+tests were written.
+
 ## Side panels as columns — October 30, 2026
 
 Native-local stack, operator in headless Chrome, procurement request with the

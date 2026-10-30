@@ -126,6 +126,7 @@ import {
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { ShellPanel } from "@/components/shell-panels";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
@@ -275,7 +276,21 @@ type RequestPanel =
       brokerOrgIds: Id<"organizations">[];
       contacts: Record<string, Id<"brokerContacts">>;
       merge: boolean;
+    }
+  | {
+      kind: "email";
+      threadId: Id<"teamEmailThreads">;
+      subject?: string;
+      source?: InboxThread["source"];
     };
+
+/**
+ * Drawers in the same slot replace each other; drawers in different slots
+ * open side by side.
+ */
+function panelSlot(panel: RequestPanel) {
+  return panel.kind === "provider-email" ? "composer" : panel.kind;
+}
 
 type RequestDetails = {
   request: RequestSummary;
@@ -399,6 +414,11 @@ function requestPanelContext(
         ],
       };
     }
+    case "email":
+      return {
+        text: panel.subject ? `email "${panel.subject}"` : "email",
+        refs: [{ kind: "team_email_thread", id: panel.threadId }],
+      };
     case "provider-email":
       return {
         text: `composing provider outreach to ${panel.brokerOrgIds.length} provider${panel.brokerOrgIds.length === 1 ? "" : "s"}${panel.merge ? " (mail merge)" : ""}`,
@@ -1784,7 +1804,7 @@ export function ProcurementRequestWorkspace({
   view,
   readOnly,
   onActions,
-  onRightPanel: setRightPanel,
+  onRightPanel,
   sidebarFooter,
 }: {
   clientOrgId: Id<"organizations">;
@@ -1808,35 +1828,34 @@ export function ProcurementRequestWorkspace({
   const requestedProposalId = searchParams.get("proposal");
   const selectedInformationForm =
     view === "information" ? searchParams.get("form") : null;
-  const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const handledProposalLink = useRef<string | null>(null);
-  // The email in the right panel, and the one being opened. Any other panel
-  // replaces it, which clears the first.
-  const openedEmailId = useRef<string | null>(null);
+  // The email being opened while the open one saves.
   const openingEmailId = useRef<string | null>(null);
-  const [panel, setPanel] = useFollowedState<RequestPanel | null>(
-    `procurement:${requestId}:panel`,
-    null,
+  // Open drawers, oldest first: one per slot, side by side.
+  const [panels, setPanels] = useFollowedState<RequestPanel[]>(
+    `procurement:${requestId}:panels`,
+    [],
   );
-  const shownPanel = useRef<RequestPanel | null>(null);
-  const composerDraft = useRef<{ text?: string; title?: string }>({});
-  const showPanel = useCallback(
-    (node: ReactNode) => {
-      openedEmailId.current = null;
-      setRightPanelOpen(node !== null);
-      setRightPanel(node);
-    },
-    [setRightPanel],
+  const setPanel = useCallback(
+    (next: RequestPanel) =>
+      setPanels((current) => [
+        ...current.filter((open) => panelSlot(open) !== panelSlot(next)),
+        next,
+      ]),
+    [setPanels],
   );
-  // Panels that are not driven by `panel` replace it.
-  const onRightPanel = useCallback(
-    (node: ReactNode) => {
-      shownPanel.current = null;
-      setPanel(null);
-      showPanel(node);
-    },
-    [setPanel, showPanel],
+  const closePanel = useCallback(
+    (slot: ReturnType<typeof panelSlot>) =>
+      setPanels((current) =>
+        current.filter((open) => panelSlot(open) !== slot),
+      ),
+    [setPanels],
   );
+  // The prefilled draft stays with the leader; followers only see which form is open.
+  const [composerDraft, setComposerDraft] = useState<{
+    text?: string;
+    title?: string;
+  }>({});
   const [applicationSection, setApplicationSection] = useFollowedState(
     `procurement:${requestId}:application-section`,
     "Contact details",
@@ -1913,7 +1932,7 @@ export function ProcurementRequestWorkspace({
     )
       return;
     if (change !== latestTabChange.current) return;
-    closeRightPanel();
+    closeAllPanels();
     router.push(
       `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}${informationFormId ? `&form=${encodeURIComponent(informationFormId)}` : ""}`,
     );
@@ -1925,7 +1944,10 @@ export function ProcurementRequestWorkspace({
     () => (policies ?? []) as PolicyOption[],
     [policies],
   );
-  const closeRightPanel = useCallback(() => onRightPanel(null), [onRightPanel]);
+  const closeAllPanels = useCallback(() => {
+    setPanels([]);
+    onRightPanel(null);
+  }, [onRightPanel, setPanels]);
   const openNotes = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
@@ -1960,7 +1982,6 @@ export function ProcurementRequestWorkspace({
     }
     if (
       handledProposalLink.current === linkKey ||
-      rightPanelOpen ||
       proposals === undefined ||
       !details ||
       details.request.clientOrgId !== clientOrgId
@@ -1984,7 +2005,6 @@ export function ProcurementRequestWorkspace({
     proposals,
     requestId,
     requestedProposalId,
-    rightPanelOpen,
   ]);
 
   const openUpload = useCallback(
@@ -2011,48 +2031,36 @@ export function ProcurementRequestWorkspace({
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
+  // Closing the reader also drops a deep-linked thread from the URL.
   const closeEmail = useCallback(() => {
-    closeRightPanel();
-    router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
-  }, [closeRightPanel, router, basePath, requestId]);
+    closePanel("email");
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("thread")) return;
+    url.searchParams.delete("thread");
+    router.replace(`${url.pathname}${url.search}`, { scroll: false });
+  }, [closePanel, router]);
   const openEmail = useCallback(
-    async (
-      thread: {
-        _id: Id<"teamEmailThreads">;
-        subject?: string;
-        source?: InboxThread["source"];
-      },
-      onClose: () => void = closeEmail,
-    ) => {
-      if (
-        openedEmailId.current === thread._id ||
-        openingEmailId.current === thread._id
-      )
-        return;
+    async (thread: {
+      _id: Id<"teamEmailThreads">;
+      subject?: string;
+      source?: InboxThread["source"];
+    }) => {
+      if (openingEmailId.current === thread._id) return;
       openingEmailId.current = thread._id;
       try {
         if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
           return;
-        onRightPanel(
-          <ReaderBoundary resetKey={thread._id} onClose={onClose}>
-            <ProcurementEmailDrawer
-              ref={emailDrawerRef}
-              emailThreadId={thread._id}
-              subject={thread.subject}
-              replyable={thread.source === "outreach"}
-              requestId={requestId}
-              includeArchived
-              readOnly={readOnly}
-              onClose={onClose}
-            />
-          </ReaderBoundary>,
-        );
-        openedEmailId.current = thread._id;
+        setPanel({
+          kind: "email",
+          threadId: thread._id,
+          subject: thread.subject,
+          source: thread.source,
+        });
       } finally {
         openingEmailId.current = null;
       }
     },
-    [closeEmail, onRightPanel, readOnly, requestId],
+    [setPanel],
   );
 
   // The reader opens from the URL on its own, so a saved link works whether or
@@ -2091,11 +2099,7 @@ export function ProcurementRequestWorkspace({
     ) => {
       if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
         return;
-      // The prefilled draft stays with the leader; followers only see which form is open.
-      composerDraft.current = {
-        text: initialText,
-        title: informationFormTitle,
-      };
+      setComposerDraft({ text: initialText, title: informationFormTitle });
       router.replace(
         `${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`,
         { scroll: false },
@@ -2105,27 +2109,21 @@ export function ProcurementRequestWorkspace({
     [basePath, requestId, router, setPanel],
   );
 
-  useEffect(() => {
-    if (!panel) {
-      if (shownPanel.current) {
-        shownPanel.current = null;
-        showPanel(null);
-      }
-      return;
-    }
+  const renderPanel = (panel: RequestPanel): ReactNode => {
+    const close = () => closePanel(panelSlot(panel));
     let node: ReactNode = null;
     if (panel.kind === "notes") {
-      const close = async () => {
+      const closeNotes = async () => {
         if (packetEditorRef.current && !(await packetEditorRef.current.save()))
           return;
-        closeRightPanel();
+        close();
       };
       node = (
         <SettingsDrawer
           open
           title="Internal notes"
           onOpenChange={(open) => {
-            if (!open) void close();
+            if (!open) void closeNotes();
           }}
         >
           <PacketWorkspace
@@ -2142,7 +2140,7 @@ export function ProcurementRequestWorkspace({
       node = (
         <PacketLinkDrawer
           requestId={requestId}
-          onClose={closeRightPanel}
+          onClose={close}
           beforeRegenerate={() =>
             submissionNotesRef.current?.save() ?? Promise.resolve(true)
           }
@@ -2170,10 +2168,7 @@ export function ProcurementRequestWorkspace({
             removingFileId={removingFileId}
             onRemoveFile={(fileItemId) => void handleRemoveFile(fileItemId)}
             onOpenThread={(threadId) =>
-              void openEmail(
-                { _id: threadId, source: "outreach" },
-                closeRightPanel,
-              )
+              void openEmail({ _id: threadId, source: "outreach" })
             }
             onOpenFile={(file) => {
               if (!file.url) return;
@@ -2201,7 +2196,7 @@ export function ProcurementRequestWorkspace({
                   scroll: false,
                 });
               }
-              closeRightPanel();
+              close();
             }}
           />
         );
@@ -2210,7 +2205,7 @@ export function ProcurementRequestWorkspace({
         <ClientFileUploadPanel
           clientOrgId={clientOrgId}
           showBrokerVisibility
-          onClose={closeRightPanel}
+          onClose={close}
           onUploaded={async (uploaded, visibility) => {
             await Promise.all(
               uploaded.map((file) =>
@@ -2254,7 +2249,7 @@ export function ProcurementRequestWorkspace({
                 setPanel({ kind: "image", fileItemId: fileItem._id });
               }
             }}
-            onClose={closeRightPanel}
+            onClose={close}
           />
         );
     } else if (panel.kind === "information") {
@@ -2263,7 +2258,7 @@ export function ProcurementRequestWorkspace({
           key={JSON.stringify(panel.target)}
           requestId={requestId}
           target={panel.target}
-          onClose={closeRightPanel}
+          onClose={close}
         />
       );
     } else if (panel.kind === "provider-email") {
@@ -2273,15 +2268,30 @@ export function ProcurementRequestWorkspace({
           requestId={requestId}
           requestTitle={requestTitle}
           target={panel}
-          onClose={closeRightPanel}
+          onClose={close}
         />
+      );
+    } else if (panel.kind === "email") {
+      node = (
+        <ReaderBoundary resetKey={panel.threadId} onClose={closeEmail}>
+          <ProcurementEmailDrawer
+            ref={emailDrawerRef}
+            emailThreadId={panel.threadId}
+            subject={panel.subject}
+            replyable={panel.source === "outreach"}
+            requestId={requestId}
+            includeArchived
+            readOnly={readOnly}
+            onClose={closeEmail}
+          />
+        </ReaderBoundary>
       );
     } else if (panel.kind === "image") {
       const file = details?.files.find(
         (row) => row._id === panel.fileItemId,
       )?.clientFile;
       if (file?.url)
-        node = <ImagePreview file={file} onClose={closeRightPanel} />;
+        node = <ImagePreview file={file} onClose={close} />;
     } else {
       const audienceTabs = (
         <RequestEmailAudienceTabs
@@ -2296,8 +2306,8 @@ export function ProcurementRequestWorkspace({
               key="provider-composer"
               request={{ requestId, clientOrgId, title: requestTitle }}
               header={audienceTabs}
-              onClose={closeRightPanel}
-              onSent={closeRightPanel}
+              onClose={close}
+              onSent={close}
             />
           ) : null
         ) : (
@@ -2305,45 +2315,16 @@ export function ProcurementRequestWorkspace({
             key={panel.informationFormId ?? requestId}
             informationFormId={panel.informationFormId}
             requestId={requestId}
-            requestTitle={composerDraft.current.title ?? requestTitle}
-            initialText={composerDraft.current.text}
+            requestTitle={composerDraft.title ?? requestTitle}
+            initialText={composerDraft.text}
             header={audienceTabs}
-            onClose={closeRightPanel}
-            onSent={closeRightPanel}
+            onClose={close}
+            onSent={close}
           />
         );
     }
-    if (!node) {
-      // The record is gone (or another request loaded): drop its stale panel.
-      if (details !== undefined && shownPanel.current) {
-        shownPanel.current = null;
-        showPanel(null);
-      }
-      return;
-    }
-    shownPanel.current = panel;
-    showPanel(node);
-  }, [
-    basePath,
-    brokers,
-    clientOrgId,
-    closeRightPanel,
-    createFileItem,
-    details,
-    handleRemoveFile,
-    onRightPanel,
-    openEmail,
-    openWithUrl,
-    panel,
-    proposals,
-    readOnly,
-    removingFileId,
-    requestId,
-    requestTitle,
-    router,
-    setPanel,
-    showPanel,
-  ]);
+    return node;
+  };
 
   const openInformationDrawer = useCallback(
     (target: InformationDrawerTarget) => {
@@ -2374,7 +2355,7 @@ export function ProcurementRequestWorkspace({
   // The reader opens before navigation, so the panel never closes in between.
   const selectInboxThread = useCallback(
     (thread: InboxThread | null, options?: { replace?: boolean }) => {
-      if (!thread) closeRightPanel();
+      if (!thread) closePanel("email");
       const query = new URLSearchParams(window.location.search);
       query.set("view", "email");
       if (thread) query.set("thread", thread._id);
@@ -2383,7 +2364,7 @@ export function ProcurementRequestWorkspace({
       if (options?.replace) router.replace(href, { scroll: false });
       else router.push(href, { scroll: false });
     },
-    [basePath, requestId, router, closeRightPanel],
+    [basePath, requestId, router, closePanel],
   );
   const selectedProviderCount = providerOutreach.selectedIds.length;
   const canEmailProviders = providerOutreach.panel?.request.canLaunch ?? false;
@@ -2693,7 +2674,7 @@ export function ProcurementRequestWorkspace({
       key === "email" ||
       key === "information"
     ) {
-      closeRightPanel();
+      closeAllPanels();
       void changeView(key === "providers" ? "proposals" : key);
       return;
     }
@@ -2785,7 +2766,9 @@ export function ProcurementRequestWorkspace({
             : []),
         ],
       },
-    open: requestPanelContext(panel, details, proposals),
+    open: panels
+      .toReversed()
+      .map((panel) => requestPanelContext(panel, details, proposals)),
   });
 
   return (
@@ -3062,6 +3045,19 @@ export function ProcurementRequestWorkspace({
           />
         ) : null}
       </div>
+      {panels.map((panel) => {
+        const node = renderPanel(panel);
+        return node ? (
+          <ShellPanel
+            key={panelSlot(panel)}
+            id={`procurement:${requestId}:${panelSlot(panel)}`}
+            kind="detail"
+            wide={panel.kind === "email"}
+          >
+            {node}
+          </ShellPanel>
+        ) : null;
+      })}
     </IntakeReviewCompact.Provider>
   );
 }
