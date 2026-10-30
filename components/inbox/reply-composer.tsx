@@ -3,30 +3,29 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { ChevronDown, Clock3, Loader2, Reply, Send, Trash2 } from "lucide-react";
+import { ChevronDown, Reply, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@claritylabs-inc/ui/components/popover";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { EmailComposeRow } from "@/components/email/compose-fields";
-import { ShowQuotedButton } from "@/components/inbox/email-html-body";
+import {
+  DraftedBySpot,
+  EmailComposerBar,
+  EmailComposerNotes,
+  FullEmailToggle,
+  followUpsRequest,
+  type FollowUps,
+} from "@/components/email/email-composer";
 import { ReplyEditor, replyBlanks, type BlankSuggestion } from "@/components/inbox/reply-editor";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AddressField, AddressPills, FromPicker } from "@/components/email/operator-address";
-import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useActiveOperators } from "@/hooks/use-operator-presence";
 import { useSharedValue } from "@/hooks/use-shared-value";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
-import { cn } from "@/lib/utils";
-import { OUTREACH_DEFAULT_CADENCE } from "@/convex/lib/providerOutreachSchedule";
-import {
-  FollowUpCountSelect,
-  IntervalSelect,
-} from "@/components/procurement/outreach-cadence-selects";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const PREVIEW_DELAY_MS = 450;
@@ -56,8 +55,6 @@ type SendAttempt = {
 };
 
 type ReplyRecipients = { to: string; cc: string[] };
-/** `cadence` null lets Spot pick the schedule. */
-type FollowUps = { cadence: { followUpCount: number; intervalBusinessDays: number } | null };
 
 // Storage is scoped to the signed-in operator and the conversation, so a
 // reload keeps a locked send and a sign-out never hands it to the next user.
@@ -179,7 +176,6 @@ function OperatorReplyComposer({
   const [serverNote, setServerNote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [showFull, setShowFull] = useFollowedState(`inbox:reply:${threadId}:show-full`, false);
   // A key belongs to one exact text and fingerprint: unchanged, it is reused.
   const sendKey = useRef<{ key: string; text: string; fingerprint: string } | null>(null);
 
@@ -327,11 +323,7 @@ function OperatorReplyComposer({
         idempotencyKey: next.key,
         fromUserId: next.fromUserId,
         recipients: next.recipients,
-        followUps: next.followUps
-          ? next.followUps.cadence
-            ? { cadence: next.followUps.cadence }
-            : {}
-          : undefined,
+        followUps: followUpsRequest(next.followUps ?? null),
       });
       if (result.status === "sent") {
         setText("");
@@ -392,11 +384,7 @@ function OperatorReplyComposer({
               onChange={setFromUserId}
               disabled={sending || locked}
             />
-            {fromSuggestion && hasText ? (
-              <span className={`ml-auto shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}>
-                Drafted by Spot
-              </span>
-            ) : null}
+            {fromSuggestion && hasText ? <DraftedBySpot /> : null}
           </EmailComposeRow>
           <EmailComposeRow label="To">
             {headers || recipients ? (
@@ -444,6 +432,7 @@ function OperatorReplyComposer({
             disabled={sending}
             readOnly={locked}
             footer={signature}
+            collabKey={`reply:${threadId}:body`}
             suggestions={blankValues}
             suggesting={suggestingBlanks}
             onChange={update}
@@ -454,92 +443,72 @@ function OperatorReplyComposer({
             }}
           />
           {preview ? (
-            <div className="space-y-2 px-4 pb-2">
-              <ShowQuotedButton
-                label={showFull ? "Hide full email" : "Show full email"}
-                expanded={showFull}
-                onClick={() => setShowFull((value) => !value)}
-              />
-              {showFull ? (
-                <div className={`max-h-48 overflow-auto rounded-md bg-muted/50 p-2 whitespace-pre-wrap break-words text-foreground ${typeStyle("caption.default")}`}>
-                  {preview.text}
-                </div>
-              ) : null}
-            </div>
+            <FullEmailToggle followKey={`inbox:reply:${threadId}`} text={preview.text} />
           ) : null}
-          {(pendingRevision && !unedited) || coEditors.length || previewError ? (
-            <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
-              {pendingRevision && !unedited ? (
-                <p className="flex items-center gap-1.5">
-                  <LogoIcon size={12} className="shrink-0" />
-                  Spot has a new draft.
-                  <button type="button" className="text-foreground underline" onClick={takeSuggestion}>
-                    Replace yours
-                  </button>
-                </p>
-              ) : null}
-              {coEditors.length ? (
-                <p>
-                  {coEditors.map((person) => person.name.split(" ")[0]).join(" and ")}{" "}
-                  {coEditors.length === 1 ? "is" : "are"} also editing this reply.
-                </p>
-              ) : null}
-              {previewError ? <p role="alert">{previewError}</p> : null}
-            </div>
-          ) : null}
-          <div className="flex items-center gap-2 border-t border-border px-4 py-2">
-            <PillButton
-              size="compact"
-              type="button"
-              shortcut={["mod", "enter"]}
-              disabled={!preview || sending || locked || needsInput}
-              onClick={() => void send()}
-            >
-              {sending ? <Loader2 className="size-3.5 animate-spin" /> : needsInput ? null : <Send className="size-3.5" />}
-              {needsInput ? `Fill ${blanks.length} blank${blanks.length === 1 ? "" : "s"} to send` : "Send"}
-            </PillButton>
-            <FollowUpControl
-              threadId={threadId}
-              value={followUps}
-              disabled={sending || locked}
-              onChange={setFollowUps}
-            />
-            {headers?.stopsFollowUps && !followUps ? (
-              <span className={`text-muted-foreground/70 ${typeStyle("caption.default")}`}>
-                Stops automatic follow-ups
-              </span>
+          <EmailComposerNotes>
+            {pendingRevision && !unedited ? (
+              <p className="flex items-center gap-1.5">
+                <LogoIcon size={12} className="shrink-0" />
+                Spot has a new draft.
+                <button type="button" className="text-foreground underline" onClick={takeSuggestion}>
+                  Replace yours
+                </button>
+              </p>
             ) : null}
-            <PillButton
-              size="compact"
-              type="button"
-              variant="ghost"
-              className="ml-auto"
-              label="Minimize draft"
-              aria-label="Minimize draft"
-              onClick={() => setMinimized(true)}
-            >
-              <ChevronDown className="size-3.5" />
-            </PillButton>
-            <PillButton
-              size="compact"
-              type="button"
-              variant="ghost"
-              label="Discard reply"
-              aria-label="Discard reply"
-              disabled={sending || locked}
-              onClick={() => {
-                update("");
-                setRecipients(null);
-                setFollowUps(null);
-                setFromSuggestion(false);
-                setShowFull(false);
-                setOpen(false);
-                setMinimized(false);
-              }}
-            >
-              <Trash2 className="size-3.5" />
-            </PillButton>
-          </div>
+            {coEditors.length ? (
+              <p>
+                {coEditors.map((person) => person.name.split(" ")[0]).join(" and ")}{" "}
+                {coEditors.length === 1 ? "is" : "are"} also editing this reply.
+              </p>
+            ) : null}
+            {previewError ? <p role="alert">{previewError}</p> : null}
+          </EmailComposerNotes>
+          <EmailComposerBar
+            className="border-t border-border px-4 py-2"
+            blanks={blanks.length}
+            sending={sending}
+            canSend={Boolean(preview) && !locked}
+            onSend={() => void send()}
+            followUps={{
+              followKey: `inbox:reply:${threadId}`,
+              value: followUps,
+              disabled: sending || locked,
+              onChange: setFollowUps,
+            }}
+            note={headers?.stopsFollowUps && !followUps ? "Stops automatic follow-ups" : null}
+            actions={
+              <>
+                <PillButton
+                  size="compact"
+                  type="button"
+                  variant="ghost"
+                  label="Minimize draft"
+                  aria-label="Minimize draft"
+                  onClick={() => setMinimized(true)}
+                >
+                  <ChevronDown className="size-3.5" />
+                </PillButton>
+                <PillButton
+                  size="compact"
+                  type="button"
+                  variant="ghost"
+                  label="Discard reply"
+                  aria-label="Discard reply"
+                  disabled={sending || locked}
+                  onClick={() => {
+                    update("");
+                    setRecipients(null);
+                    setFollowUps(null);
+                    setFromSuggestion(false);
+                    setOpen(false);
+                    setMinimized(false);
+                  }}
+                >
+                  <Trash2 className="size-3.5" />
+                </PillButton>
+              </>
+            }
+          />
         </div>
       ) : (
         <button
@@ -572,114 +541,5 @@ function OperatorReplyComposer({
         </button>
       )}
     </div>
-  );
-}
-
-/**
- * Follow up toggle: once the reply is sent, Spot nudges the recipient on the
- * same thread until anyone replies. The schedule is Spot's pick unless set here.
- */
-function FollowUpControl({
-  threadId,
-  value,
-  disabled,
-  onChange,
-}: {
-  threadId: Id<"teamEmailThreads">;
-  value: FollowUps | null;
-  disabled: boolean;
-  onChange: (value: FollowUps | null) => void;
-}) {
-  const schedule = useFollowedOpen(`inbox:reply:${threadId}:follow-ups-open`);
-  const cadence = value?.cadence ?? null;
-  return (
-    <>
-      <PillButton
-        size="compact"
-        type="button"
-        variant="ghost"
-        aria-pressed={value !== null}
-        title="Nudge the recipient on this thread until someone replies"
-        className={cn(value && "bg-foreground/6 text-foreground")}
-        disabled={disabled}
-        onClick={() => onChange(value ? null : { cadence: null })}
-      >
-        <Clock3 className="size-3.5" />
-        Follow up
-      </PillButton>
-      {value ? (
-        <Popover {...schedule}>
-          <PopoverTrigger
-            render={
-              <PillButton
-                size="compact"
-                type="button"
-                variant="ghost"
-                disabled={disabled}
-                aria-label="Follow-up schedule"
-              />
-            }
-          >
-            {cadence
-              ? `${cadence.followUpCount} · every ${cadence.intervalBusinessDays} days`
-              : "Auto"}
-            <ChevronDown className="size-3.5" />
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-72 space-y-3 p-3">
-            <Tabs
-              value={cadence ? "custom" : "auto"}
-              onValueChange={(next) =>
-                onChange({
-                  cadence:
-                    next === "custom"
-                      ? {
-                          followUpCount: OUTREACH_DEFAULT_CADENCE.followUpCount,
-                          intervalBusinessDays: OUTREACH_DEFAULT_CADENCE.intervalBusinessDays,
-                        }
-                      : null,
-                })
-              }
-            >
-              <TabsList variant="pill" aria-label="Follow-up schedule">
-                <TabsTrigger value="auto">Spot picks</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {cadence ? (
-              <>
-                <div className="space-y-1">
-                  <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-                    Follow-ups
-                  </p>
-                  <FollowUpCountSelect
-                    value={cadence.followUpCount}
-                    onChange={(followUpCount) =>
-                      onChange(followUpCount ? { cadence: { ...cadence, followUpCount } } : null)
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-                    Every
-                  </p>
-                  <IntervalSelect
-                    value={cadence.intervalBusinessDays}
-                    onChange={(intervalBusinessDays) =>
-                      onChange({ cadence: { ...cadence, intervalBusinessDays } })
-                    }
-                  />
-                </div>
-              </>
-            ) : null}
-            <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-              {cadence
-                ? "Spot writes each nudge from the conversation."
-                : "Spot picks how many nudges and how far apart, and writes each from the conversation."}{" "}
-              They stop when anyone replies.
-            </p>
-          </PopoverContent>
-        </Popover>
-      ) : null}
-    </>
   );
 }

@@ -6,6 +6,7 @@ import { Ellipsis } from "lucide-react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { LinkedText } from "@/components/email/linked-text";
 import {
   isHistoryStartLine,
   isQuoteAttribution,
@@ -275,7 +276,9 @@ export function EmailTextBody({
   const { current, quoted } = useMemo(() => splitQuotedText(text, historyStart), [text, historyStart]);
   return (
     <div className="space-y-2">
-      <p className={className}>{showQuoted || !quoted ? text : current}</p>
+      <p className={className}>
+        <LinkedText text={showQuoted || !quoted ? text : current} />
+      </p>
       {quoted && !showQuoted ? <ShowQuotedButton onClick={() => setShowQuoted(true)} /> : null}
     </div>
   );

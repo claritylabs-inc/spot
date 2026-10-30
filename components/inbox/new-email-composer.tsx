@@ -3,15 +3,20 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { Loader2, Send, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   EmailComposeInput,
-  EmailComposeMessage,
   EmailComposeRow,
   parseEmailAddressList,
 } from "@/components/email/compose-fields";
+import {
+  EmailComposerBar,
+  followUpsRequest,
+  type FollowUps,
+} from "@/components/email/email-composer";
+import { ReplyEditor, replyBlanks, type BlankSuggestion } from "@/components/inbox/reply-editor";
 import { AddressField, FromPicker } from "@/components/email/operator-address";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
@@ -47,8 +52,11 @@ type Draft = {
   requestId?: string;
   /** Sent as this operator instead of the signed-in one. */
   fromUserId?: string;
+  /** Nudge the recipient until someone replies. */
+  followUps?: FollowUps | null;
   showCopies: boolean;
 };
+const NO_SUGGESTIONS: BlankSuggestion[] = [];
 const EMPTY: Draft = { to: "", cc: "", bcc: "", subject: "", message: "", clientOrgId: "", showCopies: false };
 
 /** The request a composer opened from a request workspace files its email under. */
@@ -182,6 +190,9 @@ function OperatorNewEmailComposer({
   useSharedValue(`${scope}:from`, draft.fromUserId ?? null, (fromUserId) =>
     update({ fromUserId: fromUserId ?? undefined }),
   );
+  useSharedValue(`${scope}:follow-ups`, draft.followUps ?? null, (followUps) =>
+    update({ followUps }),
+  );
 
   const settled = useDebounced(draft, PREVIEW_DELAY_MS);
   const ready = Boolean(settled.to.trim() && settled.subject.trim() && settled.message.trim());
@@ -225,7 +236,7 @@ function OperatorNewEmailComposer({
   }, [confirmed?.pendingEmailId]);
 
   async function submit(retry?: SendAttempt) {
-    if (sending) return;
+    if (sending || (!retry && replyBlanks(draft.message).length > 0)) return;
     const next =
       retry ??
       (preview
@@ -241,6 +252,7 @@ function OperatorNewEmailComposer({
         ...composeArgs(next.draft),
         expectedFingerprint: next.fingerprint,
         idempotencyKey: next.key,
+        followUps: followUpsRequest(next.draft.followUps ?? null),
       });
       if (outcome.status === "sent") finish(next.key, outcome.teamEmailThreadId, outcome.captured);
       else if (outcome.status === "not_sent") {
@@ -261,6 +273,7 @@ function OperatorNewEmailComposer({
     [clients],
   );
   const disabled = sending || locked;
+  const blanks = replyBlanks(draft.message).length;
 
   return (
     <SettingsDrawer
@@ -271,44 +284,44 @@ function OperatorNewEmailComposer({
         if (!open && !sending) onClose();
       }}
       footer={
-        <div className="flex w-full items-center gap-2">
-          <PillButton
-            size="compact"
-            type="button"
-            shortcut={["mod", "enter"]}
-            disabled={!preview || disabled}
-            onClick={() => void submit()}
-          >
-            {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            Send
-          </PillButton>
-          {problem ? (
-            <p role="alert" className={`min-w-0 flex-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
-              {problem}
-            </p>
-          ) : null}
-          <PillButton
-            size="compact"
-            type="button"
-            variant="ghost"
-            className="ml-auto"
-            label="Discard email"
-            aria-label="Discard email"
-            disabled={disabled}
-            onClick={() => {
-              drafts.delete(draftKey);
-              onClose();
-            }}
-          >
-            <Trash2 className="size-3.5" />
-          </PillButton>
-        </div>
+        <EmailComposerBar
+          className="w-full"
+          blanks={blanks}
+          sending={sending}
+          canSend={Boolean(preview) && !locked}
+          onSend={() => void submit()}
+          followUps={{
+            followKey: scope,
+            value: draft.followUps ?? null,
+            disabled,
+            onChange: (followUps) => update({ followUps }),
+          }}
+          note={problem ? <span role="alert">{problem}</span> : null}
+          actions={
+            <PillButton
+              size="compact"
+              type="button"
+              variant="ghost"
+              label="Discard email"
+              aria-label="Discard email"
+              disabled={disabled}
+              onClick={() => {
+                drafts.delete(draftKey);
+                onClose();
+              }}
+            >
+              <Trash2 className="size-3.5" />
+            </PillButton>
+          }
+        />
       }
     >
       <div
         data-collab-scope={scope}
         className="flex min-h-full flex-1 flex-col"
         onKeyDown={(event) => {
+          // The message editor sends on its own.
+          if (event.defaultPrevented) return;
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
             void submit();
@@ -453,19 +466,21 @@ function OperatorNewEmailComposer({
           </div>
         </EmailComposeRow>
         )}
-        <EmailComposeMessage
-          aria-label="Message"
+        <ReplyEditor
           placeholder="Write your email…"
           value={draft.message}
-          disabled={disabled}
-          onChange={(event) => update({ message: event.target.value })}
-          className="min-h-12 pt-4 pb-1"
+          disabled={sending}
+          readOnly={locked}
+          scrollClassName="max-h-none pt-4"
+          footer={preview?.signature}
+          suggestions={NO_SUGGESTIONS}
+          suggesting={false}
+          collabKey={`${scope}:message`}
+          onChange={(message) => update({ message })}
+          onFocusChange={() => {}}
+          onSubmit={() => void submit()}
+          onEscape={() => {}}
         />
-        {preview ? (
-          <p className={`px-4 pb-4 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>
-            {preview.signature}
-          </p>
-        ) : null}
       </div>
     </SettingsDrawer>
   );

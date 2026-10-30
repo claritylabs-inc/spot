@@ -8,6 +8,7 @@ import { action, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
 import { getEmailDeliveryMode } from "../lib/resend";
 import { isReplyKeyMismatch, teamReplyErrorMessage } from "../lib/teamEmailReply";
+import { threadFollowUpRequestValidator } from "../lib/threadFollowUps";
 
 export type TeamComposeSendResult =
   | {
@@ -63,6 +64,8 @@ export const send = action({
     fromUserId: v.optional(v.id("users")),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
+    /** Nudge the recipient automatically until someone replies. */
+    followUps: v.optional(threadFollowUpRequestValidator),
   },
   handler: async (ctx, args): Promise<TeamComposeSendResult> => {
     let pendingEmailId: Id<"pendingEmails">;
