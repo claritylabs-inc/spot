@@ -11,6 +11,10 @@ import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { currentMonitor } from "../clientWebMonitors";
+import {
+  prepareProviderDiscovery,
+  reviewableCandidates,
+} from "../providerDiscovery";
 import { NoWriteInputError } from "./noWriteInputError";
 import { getMarkdownDocument } from "../markdownDocuments";
 import { preparePacketDocumentUpdate } from "../procurementPacket";
@@ -40,7 +44,10 @@ import { assertFeatureFlagAllowedForOrg } from "./featureFlags";
 import { clientBatchConfirmationSummary } from "./operatorClientBatch";
 import { assertExternalBrokerIdentity } from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
-import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
+import {
+  OPERATOR_AGENT_TOOL_REGISTRY,
+  type OperatorAgentToolName,
+} from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 import { validateOperatorInvitation } from "../operatorInvitations";
 import { requireSendableOperatorEmailDraft } from "../operatorEmailDrafts";
@@ -107,6 +114,8 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_client_business_profile",
   "research_client",
   "manage_client_web_monitor",
+  "discover_providers",
+  "review_provider_candidates",
   "research_broker",
   "research_brokers",
   "set_client_access_status",
@@ -1318,6 +1327,18 @@ export async function preflightOperatorToolConfirmation(
         );
       return;
     }
+    case "discover_providers": {
+      const input = OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(args.input);
+      const request = await requireProcurementRequest(ctx, input.procurementRequestId);
+      await prepareProviderDiscovery(ctx, request._id, input);
+      return;
+    }
+    case "review_provider_candidates":
+      await reviewableCandidates(
+        ctx,
+        OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(args.input).items,
+      );
+      return;
     case "set_client_assignees":
     case "set_client_access_statuses":
     case "set_client_feature_flags":

@@ -71,6 +71,12 @@ import {
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
 import { acknowledgeClientWebMonitorEvents } from "./clientWebMonitors";
+import {
+  providerCandidateReviewSummary,
+  providerDiscoveryApprovalSummary,
+  readProviderCandidates,
+  reviewProviderCandidatesByOperator,
+} from "./providerDiscovery";
 import { clientRecipientOptions } from "./lib/clientOutreach";
 import { appendWikiSection } from "./lib/wikiAppend";
 import {
@@ -410,6 +416,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "read_skill_file",
   "run_skill_script",
   "manage_client_web_monitor",
+  "discover_providers",
   "import_policy_files",
   "fill_pdf_form",
   "edit_pdf_form",
@@ -686,6 +693,18 @@ async function operatorConfirmationSummary(
   }
   if (isClientBatchToolName(toolName)) {
     return clientBatchConfirmationSummary(ctx, toolName, input);
+  }
+  if (toolName === "discover_providers") {
+    return providerDiscoveryApprovalSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(input),
+    );
+  }
+  if (toolName === "review_provider_candidates") {
+    return providerCandidateReviewSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(input),
+    );
   }
   if (toolName === "review_procurement_information_suggestions") {
     return informationSuggestionReviewSummary(
@@ -4191,6 +4210,23 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       fields: Object.keys(patch),
       companyResearch: (await ctx.db.get(orgId))?.companyResearch ?? null,
     };
+  }
+
+  if (toolName === "list_provider_candidates") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.list_provider_candidates.inputSchema.parse(input);
+    return await readProviderCandidates(
+      ctx,
+      normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      { status: parsed.status, limit: parsed.limit ?? 10, excerptChars: 240 },
+    );
+  }
+
+  if (toolName === "review_provider_candidates") {
+    return await reviewProviderCandidatesByOperator(
+      ctx,
+      args.operatorUserId,
+      OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(input),
+    );
   }
 
   if (toolName === "acknowledge_client_web_monitor_events") {
