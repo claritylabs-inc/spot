@@ -37,7 +37,7 @@ export const PROCUREMENT_CAPABILITIES = [
   {
     id: "client.information_request",
     browserSurface: "request Inbox Email client composer and reader follow-up controls",
-    agentTools: ["list_procurement_client_outreach", "save_email_draft", "send_email_draft", "stop_procurement_provider_outreach"],
+    agentTools: ["list_procurement_client_outreach", "save_email_draft", "send_email_drafts", "stop_procurement_provider_outreach"],
   },
   {
     id: "client.information_form",
@@ -52,7 +52,7 @@ export const PROCUREMENT_CAPABILITIES = [
   {
     id: "correspondence.reply",
     browserSurface: "request Inbox reply composer",
-    agentTools: ["save_email_draft", "send_email_draft"],
+    agentTools: ["save_email_draft", "send_email_drafts"],
   },
   {
     id: "client.create",

@@ -187,6 +187,7 @@ const operatorToolCategories = {
   attach_client_file_to_draft: "files",
   list_email_drafts: "email",
   send_email_draft: "send",
+  send_email_drafts: "send",
   cancel_email_draft: "delete",
   cancel_email_drafts: "delete",
   set_client_feature_flag: "settings",
@@ -207,6 +208,7 @@ const clientToolCategories: Record<
   attach_coi_to_draft: "compliance",
   list_email_drafts: "email",
   send_email_draft: "send",
+  send_email_drafts: "send",
   cancel_email_draft: "delete",
   expand_tools: "settings",
 };

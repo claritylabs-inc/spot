@@ -538,13 +538,22 @@ const NO_SUGGESTIONS: BlankSuggestion[] = [];
 
 type ThreadReplyDraft = { threadId: string; reply: string };
 
-/** Reply drafts the agent wrote into team inbox threads this turn, newest per thread. */
+/**
+ * Reply drafts the agent wrote into team inbox threads this turn, newest per
+ * thread. Newer calls save a chat draft (their output has a draftId), which
+ * shows as that draft's card instead.
+ */
 export function threadReplyDrafts(
   toolCalls: OperatorAgentMessage["toolCalls"],
 ): ThreadReplyDraft[] {
   const byThread = new Map<string, ThreadReplyDraft>();
   for (const call of toolCalls ?? []) {
-    if (call.name !== "update_team_reply_draft" || !call.input) continue;
+    if (
+      call.name !== "update_team_reply_draft" ||
+      !call.input ||
+      call.output?.includes('"draftId"')
+    )
+      continue;
     try {
       const input = JSON.parse(call.input) as {
         teamEmailThreadId?: unknown;

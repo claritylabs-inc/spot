@@ -19,16 +19,18 @@ import {
  */
 export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
   "save_email_draft",
-  // Retired send tools: each now saves the draft that send_email_draft sends.
+  // Retired send tools: each now saves the draft that send_email_drafts sends.
   "reply_email_thread",
   "reply_procurement_email_thread",
   "send_procurement_client_email",
+  "update_team_reply_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
   "attach_client_file_to_draft",
   "list_email_drafts",
   "send_email_draft",
+  "send_email_drafts",
   "cancel_email_draft",
 ]);
 
@@ -43,6 +45,8 @@ function retiredSendAsDraft(toolName: string, input: Record<string, unknown>) {
       procurementRequestId: input.procurementRequestId,
       body: input.message,
     };
+  if (toolName === "update_team_reply_draft")
+    return { teamEmailThreadId: input.teamEmailThreadId, body: input.reply };
   if (toolName === "send_procurement_client_email") {
     const cadence = input.cadence as
       | { followUpCount: number; intervalBusinessDays: number }
@@ -130,7 +134,7 @@ export async function runOperatorEmailTool(
     messageId?: Id<"operatorAgentMessages">;
     confirmationId?: Id<"operatorAgentConfirmations">;
   },
-) {
+): Promise<Record<string, unknown>> {
   let { input } = args;
   let toolName = args.toolName;
   const retired = retiredSendAsDraft(toolName, input);
@@ -201,8 +205,33 @@ export async function runOperatorEmailTool(
     };
   }
 
-  if (toolName === "send_email_draft" && !args.confirmationId) {
+  if (
+    (toolName === "send_email_draft" || toolName === "send_email_drafts") &&
+    !args.confirmationId
+  ) {
     throw new Error("Exact operator confirmation is required");
+  }
+  // A batch sends each draft in turn under the one approval; results are per draft.
+  if (toolName === "send_email_drafts") {
+    const results = [];
+    for (const draftId of input.draftIds as string[]) {
+      try {
+        results.push(
+          await runOperatorEmailTool(ctx, {
+            ...args,
+            toolName: "send_email_draft",
+            input: { draftId },
+          }),
+        );
+      } catch (error) {
+        results.push({
+          status: "not_sent",
+          draftId,
+          message: error instanceof Error ? error.message : "The email was not sent",
+        });
+      }
+    }
+    return { results };
   }
   // A client information request sends by launching its client email sequence.
   if (toolName === "send_email_draft") {

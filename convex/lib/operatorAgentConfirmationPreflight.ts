@@ -112,6 +112,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "set_client_feature_flags",
   "send_operator_slack_message",
   "send_email_draft",
+  "send_email_drafts",
   "clear_all_agent_memory",
 ] as const satisfies readonly OperatorAgentToolName[];
 
@@ -1315,6 +1316,10 @@ export async function preflightOperatorToolConfirmation(
         threadId: args.threadId,
         draftId: args.input.draftId,
       });
+      return;
+    case "send_email_drafts":
+      for (const draftId of args.input.draftIds as string[])
+        await requireSendableOperatorEmailDraft(ctx, { threadId: args.threadId, draftId });
       return;
     default:
       throw new Error(

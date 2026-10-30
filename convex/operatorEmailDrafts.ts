@@ -25,6 +25,7 @@ import {
 } from "./lib/threadFollowUps";
 import { isComposeKey, teamReplyDefaultRecipients } from "./lib/teamEmailReply";
 import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
+import { reviseTeamReplySuggestion } from "./lib/teamReplySuggestions";
 import { OUTREACH_DEFAULT_CADENCE } from "./lib/providerOutreachSchedule";
 import {
   getClientOutreachPanel,
@@ -615,7 +616,7 @@ type SendApproval =
  * draft by the operator who signed it, rechecked again inside the delivery
  * claim. Two grants exist, never a boolean:
  * - an agent/MCP exact confirmation (`confirmationId`) of `send_email_draft`
- *   for this draft, covering its follow-ups too;
+ *   or `send_email_drafts` naming this draft, covering its follow-ups too;
  * - a browser `directApproval` snapshot (no `confirmationId`), which only the
  *   session-authenticated reply, compose and chat-draft send mutations write:
  *   the signing operator approved this exact fingerprint.
@@ -685,11 +686,19 @@ export async function checkOperatorSendApproval(
       }
     }
     const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
+    const { toolName, sourceFingerprint, sourceFingerprints } = confirmation.payload;
+    // A batch approval holds each draft's fingerprint; a single send holds one.
+    const approvedFingerprint =
+      toolName === "send_email_draft" && input.draftId === draft._id
+        ? sourceFingerprint
+        : toolName === "send_email_drafts" &&
+            Array.isArray(input.draftIds) &&
+            input.draftIds.includes(draft._id)
+          ? sourceFingerprints?.[draft._id]
+          : undefined;
     if (
-      confirmation.payload.toolName !== "send_email_draft" ||
-      input.draftId !== draft._id ||
-      confirmation.payload.sourceFingerprint !==
-        (await operatorDraftSendFingerprint(draft))
+      !approvedFingerprint ||
+      approvedFingerprint !== (await operatorDraftSendFingerprint(draft))
     ) {
       return denied("The draft changed since it was approved.");
     }
@@ -1034,6 +1043,17 @@ export const applyDraftOptionsInternal = internalMutation({
     if (Object.keys(patch).length) {
       await ctx.db.patch(draft._id, patch);
       draft = { ...draft, ...patch };
+    }
+    // A reply draft is also the conversation's suggested reply in the inbox reply box.
+    if (draft.teamEmailThreadId && !draft.clientOutreach) {
+      try {
+        await reviseTeamReplySuggestion(ctx, {
+          threadId: draft.teamEmailThreadId,
+          reply: withoutQuotedHistory(draft.emailBody),
+        });
+      } catch {
+        // An archived or empty conversation keeps the chat draft only.
+      }
     }
     if (!draft.clientOutreach || !draft.senderUserId)
       return draftOptionsResult(draft);
