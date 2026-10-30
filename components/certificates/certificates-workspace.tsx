@@ -26,6 +26,7 @@ import { ListToolbar, type FilterDefinition } from "@/components/ui/list-toolbar
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePageContext } from "@/hooks/use-page-context";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
 import { typeStyle } from "@/lib/typography";
@@ -123,7 +124,7 @@ export function CertificatesWorkspace({
   const [savingCertificateId, setSavingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [archivingCertificateId, setArchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [unarchivingCertificateId, setUnarchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
-  const [policyFilter, setPolicyFilter] = useFollowedState<string[]>(`${uiKey}:policy-filters`, []);
+  const [policyFilter, setPolicyFilter] = useSavedFollowedState<string[]>(`${uiKey}:policy-filters`, []);
   const viewerOrg = useCachedViewerOrg();
   const orgId =
     orgIdOverride ??

@@ -45,6 +45,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState, useFollowedValue } from "@/hooks/use-followed-state";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   useCachedOperatorClients,
@@ -415,8 +416,8 @@ export function TeamInbox({
     url.searchParams.set("mailScope", value);
     window.history.replaceState(null, "", url.toString());
   }
-  const [clientOrgId, setClientOrgId] = useFollowedState(`${uiKey}:client`, "");
-  const [category, setCategory] = useFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
+  const [clientOrgId, setClientOrgId] = useSavedFollowedState(`${uiKey}:client`, "");
+  const [category, setCategory] = useSavedFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
   const mailboxParam = params.get("mailbox");
   const mailbox = useFollowedValue<Mailbox>(
     `${uiKey}:mailbox`,

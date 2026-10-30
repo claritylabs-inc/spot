@@ -98,6 +98,8 @@ export function ComparisonTable({
     followedContentKey(`${stateKey}:comparison`, { columns, rows }),
     indexedRows,
     sortColumns,
+    null,
+    { persist: false },
   );
   return (
     <OperationalPanel>

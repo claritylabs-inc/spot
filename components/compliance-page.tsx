@@ -99,6 +99,7 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { formatDisplayDate } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
+import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTableSort } from "@/hooks/use-table-sort";
 
@@ -2425,19 +2426,19 @@ function ComplianceWorkspace({
   >(`${uiKey}:creation-drawer`, null);
   const [requirementScope, setRequirementScope] =
     useFollowedState<RequirementScope>(`${uiKey}:scope`, "own_org");
-  const [sourceFilter, setSourceFilter] = useFollowedState<string[]>(
+  const [sourceFilter, setSourceFilter] = useSavedFollowedState<string[]>(
     `${uiKey}:source-filters`,
     [],
   );
-  const [lineFilter, setLineFilter] = useFollowedState<string[]>(
+  const [lineFilter, setLineFilter] = useSavedFollowedState<string[]>(
     `${uiKey}:line-filters`,
     [],
   );
-  const [limitFilter, setLimitFilter] = useFollowedState<string[]>(
+  const [limitFilter, setLimitFilter] = useSavedFollowedState<string[]>(
     `${uiKey}:limit-filters`,
     [],
   );
-  const [statusFilter, setStatusFilter] = useFollowedState<string[]>(
+  const [statusFilter, setStatusFilter] = useSavedFollowedState<string[]>(
     `${uiKey}:status-filters`,
     [],
   );
