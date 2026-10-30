@@ -15,7 +15,6 @@ import {
   Archive,
   ArchiveRestore,
   FileInput,
-  FolderInput,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -30,10 +29,7 @@ import {
 import {
   EmailSubmissionAttachment,
 } from "@/components/broker-network/email-submission-actions";
-import {
-  LinkSuggestionBar,
-  LinkThreadAction,
-} from "@/components/inbox/link-thread-action";
+import { ThreadClientContext } from "@/components/inbox/thread-client-context";
 import { EmailHtmlBody, EmailTextBody } from "@/components/inbox/email-html-body";
 import { splitQuotedText } from "@/lib/email-quote";
 import { ReplyComposer } from "@/components/inbox/reply-composer";
@@ -289,11 +285,6 @@ function procurementOutreachStatusLabel(value: string) {
 function procurementEmailCategoryLabel(value: string) {
   return optionForValue(EMAIL_CATEGORY_OPTIONS, value)?.label ?? value;
 }
-
-type ProcurementRequestOption = {
-  _id: Id<"procurementRequests">;
-  title: string;
-};
 
 type ForwardedMailbox = { name?: string; address?: string };
 type ForwardedEmail = {
@@ -611,9 +602,11 @@ function FollowUpStatus({
 function EmailConversation({
   thread,
   readOnly,
+  onMoved,
 }: {
   thread: ProcurementEmailThreadData;
   readOnly: boolean;
+  onMoved?: () => void;
 }) {
   // Messages flipped from their default: the newest opens, earlier ones start collapsed.
   const [toggledIds, setToggledIds] = useFollowedState<string[]>(
@@ -628,12 +621,17 @@ function EmailConversation({
   );
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
-      {thread.linkSuggestion && !thread.client && !readOnly ? (
-        <LinkSuggestionBar
-          threadId={thread.thread._id}
-          suggestion={thread.linkSuggestion}
-        />
-      ) : null}
+      <ThreadClientContext
+        thread={{
+          _id: thread.thread._id,
+          source: thread.thread.source,
+          client: thread.client,
+          request: thread.request,
+          linkSuggestion: thread.linkSuggestion,
+        }}
+        readOnly={readOnly}
+        onMoved={onMoved}
+      />
       {thread.followUps ? (
         <FollowUpStatus followUps={thread.followUps} readOnly={readOnly} />
       ) : null}
@@ -905,72 +903,6 @@ function ArchiveThreadAction({
   );
 }
 
-function MoveThreadAction({
-  emailThreadId,
-  requestId,
-  requests,
-  onMoved,
-}: {
-  emailThreadId: Id<"teamEmailThreads">;
-  requestId: Id<"procurementRequests">;
-  requests: ProcurementRequestOption[];
-  onMoved: () => void;
-}) {
-  const updateThread = useMutation(api.procurementRequests.updateEmailThread);
-  const { open, onOpenChange: setOpen } = useFollowedOpen(
-    `procurement:email:${emailThreadId}:move-open`,
-  );
-  const options = useMemo(
-    () =>
-      requests
-        .filter((request) => request._id !== requestId)
-        .map((request) => ({ value: request._id, label: request.title })),
-    [requests, requestId],
-  );
-  if (!options.length) return null;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <PillButton
-            size="compact"
-            type="button"
-            variant="ghost"
-            label="Move to request"
-            aria-label="Move to request"
-          />
-        }
-      >
-        <FolderInput className="size-3.5" />
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-3">
-        <SearchableSelect
-          ariaLabel="Move to request"
-          typographyRole="control.menu"
-          value=""
-          options={options}
-          onChange={async (value) => {
-            try {
-              await updateThread({
-                emailThreadId,
-                requestId: value as Id<"procurementRequests">,
-              });
-              setOpen(false);
-              toast.success("Conversation moved");
-              onMoved();
-            } catch (error) {
-              toast.error(
-                getUserFacingErrorMessage(error, "Could not move conversation"),
-              );
-            }
-          }}
-          placeholder="Move to request"
-        />
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 export type ProcurementEmailDrawerHandle = { save: () => Promise<boolean> };
 
 /**
@@ -987,7 +919,6 @@ export function ProcurementEmailDrawer({
   includeArchived,
   subject,
   replyable,
-  requests = [],
   readOnly,
   onClose,
 }: {
@@ -1000,8 +931,6 @@ export function ProcurementEmailDrawer({
   /** List data shown while the conversation loads. */
   subject?: string;
   replyable?: boolean;
-  /** Same-client requests a forwarded conversation can move to (request Inbox only). */
-  requests?: ProcurementRequestOption[];
   readOnly: boolean;
   onClose: () => void;
 }) {
@@ -1086,23 +1015,6 @@ export function ProcurementEmailDrawer({
               archived={!!thread.thread.archivedAt}
               onArchived={onClose}
             />
-            <LinkThreadAction
-              key={`link:${emailThreadId}`}
-              thread={{
-                _id: emailThreadId,
-                source: thread.thread.source,
-                client: thread.client,
-                request: thread.request ? { _id: thread.request.requestId } : null,
-              }}
-            />
-            {requestId && thread.request && thread.thread.source !== "outreach" ? (
-              <MoveThreadAction
-                emailThreadId={emailThreadId}
-                requestId={thread.request.requestId}
-                requests={requests}
-                onMoved={onClose}
-              />
-            ) : null}
           </div>
         ) : null
       }
@@ -1133,6 +1045,8 @@ export function ProcurementEmailDrawer({
           key={emailThreadId}
           thread={thread}
           readOnly={readOnly}
+          // Inside a request's Inbox, a moved conversation no longer belongs here.
+          onMoved={requestId ? onClose : undefined}
         />
       ) : null}
     </SettingsDrawer>
