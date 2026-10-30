@@ -22,7 +22,7 @@ import {
 import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
 import { isOperatorEmailDraft } from "./actionConfirmationFingerprint";
 import { NoWriteInputError } from "./noWriteInputError";
-import { buildOperatorSignature } from "./teamEmail";
+import { buildOperatorSignature, type SignaturePrompts } from "./teamEmail";
 import {
   withoutQuotedHistory,
   type TeamThreadDraftContext,
@@ -231,6 +231,8 @@ export type OperatorEmailSender = {
   senderUserId: Id<"users">;
   senderName: string;
   teamAddress: string;
+  /** Settings → Email prompts in effect for the sender, for the signature. */
+  prompts: SignaturePrompts;
   /** The operator's permanent Always CC, stored on every draft. */
   alwaysCc?: string;
   procurementRequestId?: Id<"procurementRequests">;
@@ -740,7 +742,7 @@ export function buildEmailToolExecutors(
       body: content.body,
       signature: operator
         ? buildOperatorSignature(
-            { name: operator.senderName, address: operator.teamAddress },
+            { name: operator.senderName, address: operator.teamAddress, prompts: operator.prompts },
             { toProvider: await ctx.runQuery(internal.brokerContacts.isProviderAddressInternal, { email: content.to }) },
           )
         : buildEmailSignature(context.agentAddress),

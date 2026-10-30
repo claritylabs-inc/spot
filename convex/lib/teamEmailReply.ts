@@ -9,10 +9,9 @@ import { escapeHtml } from "./emailTemplate";
 import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import { isSpotOutboundAddress } from "./resend";
-import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
+import { buildOperatorSignature, linkedHtml, teamOwnedDomains } from "./teamEmail";
 import { providerForEmail } from "./providerRecipients";
 import { teamTargetProblem } from "./teamEmailStore";
-import { findTextLinks } from "../../lib/text-links";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -153,17 +152,6 @@ export type TeamReplyComposition =
       message: string;
     }
   | { ok: false; reason: string };
-
-/** Escaped text with its web addresses as links. */
-function linkedHtml(text: string) {
-  let html = "";
-  let last = 0;
-  for (const link of findTextLinks(text)) {
-    html += `${escapeHtml(text.slice(last, link.start))}<a href="${escapeHtml(link.href)}">${escapeHtml(text.slice(link.start, link.end))}</a>`;
-    last = link.end;
-  }
-  return html + escapeHtml(text.slice(last));
-}
 
 export function paragraphsHtml(text: string) {
   return text
@@ -324,7 +312,7 @@ export async function composeTeamReply(
   const threaded = plan.threaded;
   const quote = threaded ? undefined : quotedHistory(latest);
   const signature = buildOperatorSignature(
-    { name: identity.name, address: identity.teamAddress },
+    { name: identity.name, address: identity.teamAddress, prompts: identity.prompts },
     { toProvider: !!(await providerForEmail(ctx, recipientEmail)) },
   );
   const renderedText = `${message}\n\n${signature.text}${quote ? `\n\n${quote.block}` : ""}`;

@@ -15,6 +15,7 @@ import { MAX_LAUNCH_PROVIDERS } from "./lib/providerOutreachSchedule";
 import { MERGE_VARIABLES } from "./lib/providerOutreachMerge";
 import { requireDirectOperatorWrite } from "./procurementRequests";
 import { loadCompanyRequest, providerEmailDraftContext, requestEmailTemplate } from "./providerOutreach";
+import { loadEmailPrompts } from "./lib/emailPrompts";
 
 /**
  * Spot's drafts of a request's first provider emails, for the composer: the
@@ -123,8 +124,11 @@ export const tailorContextInternal = internalMutation({
     if (!draft?.brokerOrgId || draft.status !== "pending" || draft.generationStartedAt !== undefined) return null;
     await ctx.db.patch(draft._id, { generationStartedAt: dayjs().valueOf() });
     const context = await providerEmailDraftContext(ctx, draft.requestId, draft.brokerOrgId).catch(() => null);
-    if (!context) await ctx.db.patch(draft._id, { status: "failed", updatedAt: dayjs().valueOf() });
-    return context;
+    if (!context) {
+      await ctx.db.patch(draft._id, { status: "failed", updatedAt: dayjs().valueOf() });
+      return null;
+    }
+    return { ...context, prompts: await loadEmailPrompts(ctx) };
   },
 });
 

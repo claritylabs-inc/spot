@@ -1,5 +1,5 @@
 import { escapeHtml } from "@claritylabs-inc/ui/lib/email";
-import { buildOperatorSignature } from "./teamEmail";
+import { buildOperatorSignature, type SignaturePrompts } from "./teamEmail";
 import type { ComposedOutreachEmail } from "./providerOutreachEmail";
 
 /**
@@ -13,7 +13,7 @@ export type ClientOutreachEmailInput = {
   isFinal: boolean;
   recipientName?: string;
   /** The sender's full name, as signed. */
-  operator: { name: string; address: string };
+  operator: { name: string; address: string; prompts: SignaturePrompts };
   message: { subject: string; text: string };
 };
 
@@ -49,7 +49,7 @@ export function composeClientOutreachEmail(
 export function composeSignedEmail(input: {
   subject: string;
   recipientName?: string;
-  operator: { name: string; address: string };
+  operator: { name: string; address: string; prompts: SignaturePrompts };
   body: string;
   source: ComposedOutreachEmail["source"];
 }): ComposedOutreachEmail {

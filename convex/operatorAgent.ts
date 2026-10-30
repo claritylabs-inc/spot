@@ -195,6 +195,7 @@ import {
   validateProviderCreate,
 } from "./lib/operatorBrokerProfiles";
 import { readOrgWiki, upsertOrgWikiDocumentByOperator } from "./orgWiki";
+import { loadEmailPrompts } from "./lib/emailPrompts";
 import {
   listPacketLinksForOperator,
   listPacketDocuments,
@@ -687,7 +688,7 @@ async function operatorConfirmationSummary(
       const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);
       const composed = composeClientOutreachEmail({
         kind: "initial", isFinal: false, recipientName: recipient?.name ?? undefined,
-        operator: { name: identity.name, address: identity.address },
+        operator: { name: identity.name, address: identity.address, prompts: identity.prompts },
         message: { subject: String(input.subject), text: String(input.message) },
       });
       lines.push("", composed.text);
@@ -7574,6 +7575,7 @@ export const getRunContextInternal = internalQuery({
       operatorName: operator.user.name,
       operatorEmail: operator.user.email,
       operatorTeamAddress,
+      emailPrompts: await loadEmailPrompts(ctx, run.operatorUserId),
     };
   },
 });

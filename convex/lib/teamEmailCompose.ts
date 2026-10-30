@@ -144,7 +144,7 @@ export async function composeTeamEmail(
   try {
     identity = await operatorSenderIdentity(ctx, args.operatorUserId);
     signature = buildOperatorSignature(
-      { name: identity.name, address: identity.teamAddress },
+      { name: identity.name, address: identity.teamAddress, prompts: identity.prompts },
       { toProvider: !!(await providerForEmail(ctx, recipientEmail)) },
     );
   } catch (error) {

@@ -4,6 +4,7 @@ import { v, type Infer } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { composeSignedEmail } from "./clientOutreachEmail";
+import type { SignaturePrompts } from "./teamEmail";
 import { MAX_OUTREACH_FOLLOW_UPS } from "./providerOutreachSchedule";
 import { normalizeProcurementEmail } from "./procurement";
 
@@ -103,7 +104,7 @@ export function composeThreadFollowUpEmail(input: {
   subject: string;
   isFinal: boolean;
   recipientName?: string;
-  operator: { name: string; address: string };
+  operator: { name: string; address: string; prompts: SignaturePrompts };
   /** A written nudge; the template is used without one. */
   body?: string;
 }) {

@@ -17,7 +17,7 @@ import {
 export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
 import { COI_DISCLAIMER, NO_OPEN_ENDED_OFFERS } from "./channelStyle";
-import { emailSkillPrompt, REPLY_DRAFT_SIGN_OFF } from "./emailSkill";
+import { REPLY_DRAFT_SIGN_OFF } from "./emailSkill";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
@@ -116,7 +116,7 @@ ${COI_DISCLAIMER}
 Use 1–3 short paragraphs or a short bullet list. Include only policy facts useful to the recipient unless a detailed memo was requested.
 ${NO_OPEN_ENDED_OFFERS}
 
-${emailSkillPrompt({ provider: true })}
+Follow the EMAIL WRITING RULES and PROVIDER RULES sections of this prompt.
 Provider outreach for a procurement request goes through launch_procurement_provider_outreach, which applies these rules and the provider's relationship automatically.
 
 OPERATOR OUTBOUND EMAIL:
@@ -2967,7 +2967,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_procurement_provider_emails: defineOperatorTool({
     family: "procurement",
     version: 1,
-    description: `Write or revise the first provider emails for one request; never sends. Omit brokerOrgId to set the request's mail-merge template, sent to every provider without its own draft; give brokerOrgId to write that provider's own email. Open composers show the new text unless the operator already edited theirs. Write plain text with factual bullets following the email writing rules and provider rules, and use merge variables for anything that differs by provider: {{first_name}} (greeting), {{provider}}, {{company}}, {{introduction}} (our introduction for providers without an active relationship; empty otherwise), {{sender_first_name}}. Keep {{application_link}} once, on its own line; it becomes each provider's secure application link. ${REPLY_DRAFT_SIGN_OFF} The signature is added on send. Use [needs: …] only for facts nobody has provided; they must be filled before sending. Process 1–50 items.\n${emailSkillPrompt({ provider: true })}`,
+    description: `Write or revise the first provider emails for one request; never sends. Omit brokerOrgId to set the request's mail-merge template, sent to every provider without its own draft; give brokerOrgId to write that provider's own email. Open composers show the new text unless the operator already edited theirs. Write plain text with factual bullets following the email writing rules and provider rules, and use merge variables for anything that differs by provider: {{first_name}} (greeting), {{provider}}, {{company}}, {{introduction}} (our introduction for providers without an active relationship; empty otherwise), {{sender_first_name}}. Keep {{application_link}} once, on its own line; it becomes each provider's secure application link. ${REPLY_DRAFT_SIGN_OFF} The signature is added on send. Use [needs: …] only for facts nobody has provided; they must be filled before sending. Process 1–50 items.`,
     inputSchema: z.object({
       procurementRequestId,
       items: z
