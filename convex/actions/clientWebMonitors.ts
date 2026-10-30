@@ -1,9 +1,9 @@
 "use node";
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { internalAction, type ActionCtx } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import {
   ClRouterRequestError,
   clRouterCancelMonitor,
@@ -20,6 +20,11 @@ import {
   newClientWebMonitorToken,
 } from "../lib/clientWebMonitors";
 import { NoWriteInputError } from "../lib/noWriteInputError";
+import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
+import {
+  throwUserFacingError,
+  userFacingErrorCodes,
+} from "../lib/userFacingErrors";
 import { routerSupportsMonitors } from "../lib/routerCapabilities";
 import { callbackSiteUrl } from "../lib/routerJobClient";
 import { routerJobTokenHash } from "../routerJobs";
@@ -152,4 +157,48 @@ export const cancel = internalAction({
   args: { orgId: v.id("organizations") },
   handler: (ctx, args): Promise<CancelledMonitor> =>
     cancelClientWebMonitor(ctx, args),
+});
+
+async function authorizeOperator(ctx: ActionCtx, orgId: Id<"organizations">) {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
+  await ctx.runQuery(
+    internal.clientWebMonitors.authorizeOperatorWriteInternal,
+    { userId, orgId },
+  );
+  return userId;
+}
+
+/** The operator UI shows a ConvexError's string data, not the wrapped stack text. */
+async function forOperatorUi<T>(work: Promise<T>) {
+  try {
+    return await work;
+  } catch (error) {
+    if (error instanceof NoWriteInputError)
+      throw new ConvexError(error.data.message);
+    throw error;
+  }
+}
+
+export const start = action({
+  args: { orgId: v.id("organizations"), frequency: v.optional(v.string()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ status: "active"; frequency: string }> => {
+    const userId = await authorizeOperator(ctx, args.orgId);
+    const { status, frequency } = await forOperatorUi(
+      createClientWebMonitor(ctx, { ...args, userId }),
+    );
+    return { status, frequency };
+  },
+});
+
+export const stop = action({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args): Promise<{ status: "cancelled" }> => {
+    await authorizeOperator(ctx, args.orgId);
+    const { status } = await forOperatorUi(cancelClientWebMonitor(ctx, args));
+    return { status };
+  },
 });

@@ -268,6 +268,18 @@ export async function researchInformationByOperator(
   return { ...researchRunStatus(run), reused };
 }
 
+export const research = mutation({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, { requestId }) => {
+    const { operator } = await operatorWrite(ctx, requestId);
+    return await researchInformationByOperator(
+      ctx,
+      operator.user._id,
+      requestId,
+    );
+  },
+});
+
 /** Acceptance and correction rates for measuring research quality. */
 export const stats = internalQuery({
   args: { sinceMs: v.number() },

@@ -6,10 +6,20 @@ import {
   httpAction,
   internalMutation,
   internalQuery,
+  mutation,
+  query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import { readBoundedRequestBody } from "./lib/httpBody";
+import {
+  assertNoOperatorImpersonation,
+  requireDirectOperatorClientWrite,
+} from "./lib/clientFiles";
+import {
+  requireOperator,
+  requireOperatorForUser,
+} from "./lib/operatorIdentity";
 import {
   CLIENT_WEB_MONITOR_ATTENTION_DAYS,
   CLIENT_WEB_MONITOR_BODY_BYTES,
@@ -204,6 +214,44 @@ export async function acknowledgeClientWebMonitorEvents(
   }
   return { orgId: args.orgId, acknowledged, alreadyAcknowledged, notFound };
 }
+
+export const forClient = query({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, { orgId }) => {
+    await requireOperator(ctx);
+    if (!(await liveClient(ctx, orgId)))
+      throw new Error("Client organization not found");
+    return await readClientWebMonitor(ctx, orgId, 10);
+  },
+});
+
+export const acknowledgeEvents = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    eventIds: v.array(v.id("clientWebMonitorEvents")),
+  },
+  handler: async (ctx, args) => {
+    const { operator } = await requireDirectOperatorClientWrite(
+      ctx,
+      args.orgId,
+    );
+    return await acknowledgeClientWebMonitorEvents(ctx, {
+      ...args,
+      userId: operator.userId,
+    });
+  },
+});
+
+/** Operator authorization for the start and stop actions. */
+export const authorizeOperatorWriteInternal = internalQuery({
+  args: { userId: v.id("users"), orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.userId);
+    await assertNoOperatorImpersonation(ctx, args.userId);
+    if (!(await liveClient(ctx, args.orgId)))
+      throw new Error("Client organization not found");
+  },
+});
 
 /** Creates the pending row a router monitor will be attached to. */
 export const beginCreateInternal = internalMutation({

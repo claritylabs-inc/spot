@@ -47,6 +47,7 @@ import {
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { useWebsiteTechScan, WebsiteTechSection } from "./website-tech-section";
+import { WebMonitoringSection } from "../web-monitoring-section";
 
 function ProfileContent({
   client,
@@ -250,20 +251,23 @@ function LoadedProfile({
                 readOnly={readOnly}
               />
             ) : profileTab === "Account" ? (
-              <ClientAccountSection
-                client={client}
-                editing={!readOnly}
-                value={draftAccount}
-                onChange={(next) => {
-                  setDraftAccount(next);
-                  setAnswers((current) => ({
-                    ...current,
-                    legalName: next.name,
-                    website: next.website,
-                  }));
-                }}
-                disabled={readOnly}
-              />
+              <div className="space-y-6">
+                <ClientAccountSection
+                  client={client}
+                  editing={!readOnly}
+                  value={draftAccount}
+                  onChange={(next) => {
+                    setDraftAccount(next);
+                    setAnswers((current) => ({
+                      ...current,
+                      legalName: next.name,
+                      website: next.website,
+                    }));
+                  }}
+                  disabled={readOnly}
+                />
+                <WebMonitoringSection orgId={client._id} readOnly={readOnly} />
+              </div>
             ) : !readOnly ? (
               <fieldset disabled={readOnly}>
                 <IntakeApplicationFields

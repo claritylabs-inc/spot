@@ -15,6 +15,7 @@ import {
   formatIntakeFollowupAnswer,
 } from "@/lib/intake-followups";
 import { PillButton } from "@/components/ui/pill-button";
+import { SuggestionSources } from "@/components/procurement/information/suggestion";
 import { IntakeCheckboxCard } from "./details-fields";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
@@ -48,6 +49,31 @@ function coverageGroupLabel(coverage: string) {
     COVERAGE_OPTIONS.find((option) => option.id === coverage)?.label ??
     "Additional details"
   );
+}
+
+/** Unanswered questions start with their public-research suggestion; submitting confirms it. */
+function prefillSuggestions(form: Form, responses: Form["responses"]) {
+  const prefilled = form.questions.flatMap((q) => {
+    const row = responses.find((r) => r.questionId === q.questionId);
+    const answered =
+      !!row && (row.answer.trim() || row.unsure || row.fileItemIds.length);
+    return q.suggestion && !answered
+      ? [
+          {
+            questionId: q.questionId,
+            answer: q.suggestion.answer,
+            unsure: false,
+            fileItemIds: row?.fileItemIds ?? [],
+          },
+        ]
+      : [];
+  });
+  return [
+    ...responses.filter(
+      (r) => !prefilled.some((p) => p.questionId === r.questionId),
+    ),
+    ...prefilled,
+  ];
 }
 
 export function InformationForm({
@@ -96,8 +122,8 @@ function FormEditor({ form }: { form: Form }) {
   const save = useLeaderOnly(
     useMutation(api.procurementInformationForms.saveForm),
   );
-  const [responses, setResponses] = useState(
-    form.editDraft?.responses ?? form.responses,
+  const [responses, setResponses] = useState(() =>
+    prefillSuggestions(form, form.editDraft?.responses ?? form.responses),
   );
   const [showFiles, setShowFiles] = useFollowedState(
     `information-form:${form.id}:files-open`,
@@ -514,6 +540,17 @@ function FormEditor({ form }: { form: Form }) {
                   answer={row?.unsure ? "I'm not sure" : (row?.answer ?? "")}
                   onChange={(_, value) => change(current.questionId, value)}
                 />
+                {current.suggestion &&
+                  row?.answer === current.suggestion.answer && (
+                    <div
+                      className={`mt-3 space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
+                    >
+                      <p>Suggested from public sources</p>
+                      <SuggestionSources
+                        citations={current.suggestion.citations}
+                      />
+                    </div>
+                  )}
               </div>
               <div className="space-y-3">
                 <PillButton

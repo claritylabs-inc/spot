@@ -20,6 +20,9 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export type Panel = FunctionReturnType<typeof api.procurementInformation.panel>;
 export type Question = Panel["questions"][number];
+export type Suggestion = FunctionReturnType<
+  typeof api.procurementInformationSuggestions.listForRequest
+>["suggestions"][number];
 export const KINDS: IntakeFollowupQuestion["kind"][] = [
   "short_text",
   "long_text",
