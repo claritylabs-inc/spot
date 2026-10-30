@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -138,6 +139,21 @@ function McpServerEditor({
   disabled: boolean;
   onClose: () => void;
 }) {
+  usePageContextLayer(
+    server
+      ? {
+          pageType: "operator_mcp_server",
+          entityId: server._id,
+          summary: `MCP server ${server.name} (${server.url}); ${
+            server.authType === "oauth" && !server.hasOAuth
+              ? "OAuth not connected"
+              : server.enabled
+                ? `enabled, ${server.toolCount} tools`
+                : "disabled"
+          }`,
+        }
+      : { pageType: "operator_settings", summary: "Adding an MCP server" },
+  );
   const save = useAction(api.actions.operatorMcp.save);
   const remove = useMutation(api.operatorMcpServers.remove);
   const connect = useAction(api.actions.operatorMcpOAuth.connect);

@@ -32,6 +32,26 @@ export function OperatorPageContextRegistration({
   return null;
 }
 
+// normalizeOperatorPageContext rejects longer summaries.
+const MAX_SUMMARY_LENGTH = 500;
+
+/** Joins what the operator sees into one summary within the context bound. */
+export function operatorContextSummary(
+  ...parts: (string | false | null | undefined)[]
+) {
+  const summary = parts.filter(Boolean).join("; ");
+  return summary.length > MAX_SUMMARY_LENGTH
+    ? `${summary.slice(0, MAX_SUMMARY_LENGTH - 1)}…`
+    : summary;
+}
+
+/** Lists the first `max` values and counts the rest. */
+export function operatorContextList(values: readonly string[], max = 5) {
+  return values.length > max
+    ? `${values.slice(0, max).join(", ")} and ${values.length - max} more`
+    : values.join(", ");
+}
+
 export function operatorPageContextKey(context: PageContext) {
   return `${context.pageType}:${context.entityId ?? "page"}`;
 }
@@ -94,6 +114,14 @@ export function operatorPageContextFromPathname(
     };
   }
 
+  if (segments[1] === "brokers" && segments[2]) {
+    return {
+      pageType: "operator_broker",
+      entityId: segments[2],
+      summary: "Insurance provider profile",
+    };
+  }
+
   if (segments[1] === "policies" && segments[2]) {
     return {
       pageType: "policy",
@@ -103,17 +131,17 @@ export function operatorPageContextFromPathname(
   }
 
   const summaryByArea: Record<string, string> = {
+    audit: "Operator activity log",
     brokers: "Insurance providers",
     channels: "Agent channels",
     clients: "Client organizations",
     compliance: "Client compliance",
+    inbox: "Shared team inbox",
     policies: "Client policies",
     procurement: "Procurement requests across clients",
     profile: "Operator profile",
-    logs: "Model call logs",
-    usage: "Model usage",
-    routing: "Model routing",
-    telemetry: "System telemetry",
+    settings: "Operator settings",
+    team: "Teammates online",
   };
   const area = segments[1] ?? "clients";
 
@@ -144,6 +172,8 @@ export function operatorThreadContextHref(
     const section = clientSections[context.pageType];
     if (section !== undefined && context.entityId) {
       href = `/operator/clients/${encodeURIComponent(context.entityId)}${section}`;
+    } else if (context.pageType === "operator_broker" && context.entityId) {
+      href = `/operator/brokers/${encodeURIComponent(context.entityId)}`;
     } else if (!context.entityId && context.pageType.startsWith("operator_")) {
       href = `/operator/${context.pageType.slice("operator_".length).replaceAll("_", "-")}`;
     }
@@ -153,7 +183,7 @@ export function operatorThreadContextHref(
   }
   const url = new URL(href, "https://spot.invalid");
   if (
-    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|procurement|profile|routing|telemetry|logs|usage|settings)\/?$/.test(url.pathname)
+    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers(?:\/[^/]+)?|channels|procurement|profile|settings|audit|team|inbox)\/?$/.test(url.pathname)
   ) return null;
   url.searchParams.set("agentThread", threadId);
   return `${url.pathname}${url.search}${url.hash}`;

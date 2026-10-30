@@ -41,6 +41,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { RemoveButton } from "@/components/ui/remove-button";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import {
   PROVIDER_ACORD_LOB_CODES,
@@ -94,6 +95,19 @@ export function ProviderSubmissionDefaults({
   const [editing, setEditing] = useFollowedState<string | null>(
     `provider:${brokerOrgId}:submission-defaults:editing`,
     null,
+  );
+  usePageContextLayer(
+    editing === null
+      ? null
+      : {
+          pageType: "operator_broker",
+          entityId: brokerOrgId,
+          summary: `Insurance provider ${brokerName}; ${
+            editing
+              ? `editing ${lobLabel(editing)} (${editing}) submission defaults`
+              : "adding coverage submission defaults"
+          }`,
+        },
   );
   return (
     <div className="space-y-4">
