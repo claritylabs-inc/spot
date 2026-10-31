@@ -18,6 +18,7 @@ import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
+import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { SuggestionSources } from "@/components/procurement/information/suggestion";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
@@ -136,7 +137,9 @@ export function WebMonitoringSection({
   const start = useAction(api.actions.clientWebMonitors.start);
   const stop = useAction(api.actions.clientWebMonitors.stop);
   const [working, setWorking] = useState(false);
-  const [confirmStop, setConfirmStop] = useState(false);
+  const { open: confirmStop, onOpenChange: setConfirmStop } = useFollowedOpen(
+    `client:${orgId}:web-monitor:stop`,
+  );
   if (!data) return <Skeleton className="h-24 w-full" />;
   const state = monitorState(data.monitor);
   async function run(work: () => Promise<unknown>, failure: string) {

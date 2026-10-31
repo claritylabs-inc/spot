@@ -15,8 +15,8 @@ import {
   CLIENT_WEB_MONITOR_FIELDS,
   CLIENT_WEB_MONITOR_QUERY,
   DEFAULT_CLIENT_WEB_MONITOR_FREQUENCY,
+  assertClientWebMonitorFrequency,
   clientWebMonitorPublicWebsite,
-  isClientWebMonitorFrequency,
   newClientWebMonitorToken,
 } from "../lib/clientWebMonitors";
 import { NoWriteInputError } from "../lib/noWriteInputError";
@@ -73,11 +73,7 @@ export async function createClientWebMonitor(
 ): Promise<CreatedMonitor> {
   const orgId = await clientOrgId(ctx, args.orgId);
   const frequency = args.frequency ?? DEFAULT_CLIENT_WEB_MONITOR_FREQUENCY;
-  if (!isClientWebMonitorFrequency(frequency))
-    throw new NoWriteInputError(
-      "invalid_frequency",
-      "Frequency must be between 1h and 30d, such as 6h, 1d or 1w.",
-    );
+  assertClientWebMonitorFrequency(frequency);
   await assertRouterSupportsMonitors();
   const token = newClientWebMonitorToken();
   const pending: {

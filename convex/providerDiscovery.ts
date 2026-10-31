@@ -175,14 +175,79 @@ export async function recentProviderDiscoveries(ctx: QueryCtx, limit: number) {
   return rows.map(discoveryStatus);
 }
 
-/** One discovery's status and its candidates in the router's order; the latest discovery when none is named. */
-export async function readProviderCandidates(
+/** One candidate with every match condition and its trimmed citations. */
+function candidateEvidence(
+  candidate: Doc<"providerDiscoveryCandidates">,
+  excerptChars: number,
+) {
+  return {
+    candidateId: candidate._id,
+    name: candidate.name,
+    url: candidate.url,
+    domain: candidate.domain,
+    status: candidate.status,
+    ...(candidate.brokerOrgId ? { brokerOrgId: candidate.brokerOrgId } : {}),
+    ...(candidate.providerType ? { providerType: candidate.providerType } : {}),
+    ...(candidate.linesOffered ? { linesOffered: candidate.linesOffered } : {}),
+    ...(candidate.statesServed ? { statesServed: candidate.statesServed } : {}),
+    ...(candidate.appointmentUrl
+      ? { appointmentUrl: candidate.appointmentUrl }
+      : {}),
+    ...(candidate.description
+      ? { description: candidate.description.slice(0, excerptChars) }
+      : {}),
+    conditions: candidate.conditions.map((condition) => ({
+      ...condition,
+      citations: condition.citations.map((citation) => ({
+        ...citation,
+        ...(citation.excerpt
+          ? { excerpt: citation.excerpt.slice(0, excerptChars) }
+          : {}),
+      })),
+    })),
+  };
+}
+
+const COMPACT_TEXT_CHARS = 160;
+
+/**
+ * Identity and fit without citations (under 0.85 KB, against 7 KB with them), so
+ * a default 25-candidate discovery fits the 24 KB model-facing result bound.
+ */
+function candidateSummary(candidate: Doc<"providerDiscoveryCandidates">) {
+  return {
+    candidateId: candidate._id,
+    name: candidate.name,
+    domain: candidate.domain,
+    status: candidate.status,
+    ...(candidate.brokerOrgId ? { brokerOrgId: candidate.brokerOrgId } : {}),
+    ...(candidate.providerType ? { providerType: candidate.providerType } : {}),
+    ...(candidate.linesOffered
+      ? { linesOffered: candidate.linesOffered.slice(0, COMPACT_TEXT_CHARS) }
+      : {}),
+    ...(candidate.statesServed
+      ? { statesServed: candidate.statesServed.slice(0, COMPACT_TEXT_CHARS) }
+      : {}),
+    ...(candidate.appointmentUrl
+      ? { appointmentUrl: candidate.appointmentUrl }
+      : {}),
+    matched: candidate.conditions
+      .filter((condition) => condition.matched)
+      .map((condition) => condition.name),
+    unmatched: candidate.conditions
+      .filter((condition) => !condition.matched)
+      .map((condition) => condition.name),
+  };
+}
+
+/** One discovery (the latest when none is named) and a window of its candidates in the router's order. */
+async function candidateWindow(
   ctx: QueryCtx,
   options: {
     discoveryId?: Id<"providerDiscoveries">;
     status?: Doc<"providerDiscoveryCandidates">["status"];
     limit: number;
-    excerptChars: number;
+    offset?: number;
   },
 ) {
   const discovery = options.discoveryId
@@ -207,37 +272,72 @@ export async function readProviderCandidates(
   const matching = options.status
     ? rows.filter((candidate) => candidate.status === options.status)
     : rows;
+  const offset = options.offset ?? 0;
+  const end = offset + options.limit;
   return {
     discovery: discovery ? discoveryStatus(discovery) : null,
-    candidates: matching.slice(0, options.limit).map((candidate) => ({
-      candidateId: candidate._id,
-      name: candidate.name,
-      url: candidate.url,
-      domain: candidate.domain,
-      status: candidate.status,
-      ...(candidate.brokerOrgId ? { brokerOrgId: candidate.brokerOrgId } : {}),
-      ...(candidate.providerType ? { providerType: candidate.providerType } : {}),
-      ...(candidate.linesOffered ? { linesOffered: candidate.linesOffered } : {}),
-      ...(candidate.statesServed ? { statesServed: candidate.statesServed } : {}),
-      ...(candidate.appointmentUrl
-        ? { appointmentUrl: candidate.appointmentUrl }
-        : {}),
-      ...(candidate.description
-        ? { description: candidate.description.slice(0, options.excerptChars) }
-        : {}),
-      conditions: candidate.conditions.map((condition) => ({
-        ...condition,
-        citations: condition.citations.map((citation) => ({
-          ...citation,
-          ...(citation.excerpt
-            ? { excerpt: citation.excerpt.slice(0, options.excerptChars) }
-            : {}),
-        })),
-      })),
-    })),
-    bounded: matching.length > options.limit,
+    rows: matching.slice(offset, end),
+    bounded: matching.length > end,
+    ...(matching.length > end ? { nextOffset: end } : {}),
+  };
+}
+
+/** One discovery's status and its candidates with full cited evidence; the latest discovery when none is named. */
+export async function readProviderCandidates(
+  ctx: QueryCtx,
+  options: {
+    discoveryId?: Id<"providerDiscoveries">;
+    status?: Doc<"providerDiscoveryCandidates">["status"];
+    limit: number;
+    excerptChars: number;
+  },
+) {
+  const { rows, ...window } = await candidateWindow(ctx, options);
+  return {
+    discovery: window.discovery,
+    candidates: rows.map((candidate) =>
+      candidateEvidence(candidate, options.excerptChars),
+    ),
+    bounded: window.bounded,
     note: UNTRUSTED_NOTE,
   };
+}
+
+/** The same window as compact rows without citations, for model-facing reads. */
+export async function readProviderCandidateSummaries(
+  ctx: QueryCtx,
+  options: {
+    discoveryId?: Id<"providerDiscoveries">;
+    status?: Doc<"providerDiscoveryCandidates">["status"];
+    limit: number;
+    offset?: number;
+  },
+) {
+  const { rows, ...window } = await candidateWindow(ctx, options);
+  return {
+    discovery: window.discovery,
+    candidates: rows.map(candidateSummary),
+    bounded: window.bounded,
+    ...(window.nextOffset !== undefined ? { nextOffset: window.nextOffset } : {}),
+    note: UNTRUSTED_NOTE,
+  };
+}
+
+/** Full cited evidence for exact candidates; IDs that are not candidates are reported as notFound. */
+export async function readProviderCandidateEvidence(
+  ctx: QueryCtx,
+  candidateIds: string[],
+  excerptChars: number,
+) {
+  const candidates = [];
+  const notFound = [];
+  for (const candidateId of candidateIds) {
+    const id = ctx.db.normalizeId("providerDiscoveryCandidates", candidateId);
+    const candidate = id ? await ctx.db.get(id) : null;
+    if (candidate) candidates.push(candidateEvidence(candidate, excerptChars));
+    else notFound.push(candidateId);
+  }
+  return { candidates, notFound, note: UNTRUSTED_NOTE };
 }
 
 export async function reviewableCandidates(

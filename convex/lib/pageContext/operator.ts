@@ -34,6 +34,69 @@ export function brokerProfileHints(read: unknown): string[] {
   return hints;
 }
 
+type MarketCandidatesRead = {
+  discovery?: { status?: unknown; error?: unknown } | null;
+  candidates?: Array<{ status?: unknown }>;
+  bounded?: unknown;
+  nextOffset?: unknown;
+};
+
+type MarketDiscoveriesRead = {
+  discoveries?: Array<{ discoveryId?: unknown; status?: unknown }>;
+};
+
+const isActiveSearch = (status: unknown) =>
+  status === "pending" || status === "running";
+
+/**
+ * Where the open market search stands, derived in code from the prefetched
+ * candidates and recent searches so the model neither re-reads them nor starts
+ * a second paid search while one runs.
+ */
+export function providerMarketHints(
+  candidatesRead: unknown,
+  discoveriesRead: unknown,
+  openDiscoveryId?: string,
+): string[] {
+  const read = candidatesRead as MarketCandidatesRead | undefined;
+  const hints: string[] = [];
+  const status = read?.discovery?.status;
+  if (isActiveSearch(status))
+    hints.push(
+      "This search is still running: its results arrive later and the candidates listed are not final. Do not review them or call the search complete.",
+    );
+  else if (status === "failed" || status === "cancelled")
+    hints.push(
+      `This search ${String(status)}${typeof read?.discovery?.error === "string" ? ` (${read.discovery.error})` : ""}.`,
+    );
+  if (Array.isArray(read?.candidates)) {
+    const counts = new Map<string, number>();
+    for (const candidate of read.candidates)
+      counts.set(
+        String(candidate.status),
+        (counts.get(String(candidate.status)) ?? 0) + 1,
+      );
+    const more = read.bounded === true;
+    if (read.candidates.length)
+      hints.push(
+        `Candidates loaded: ${read.candidates.length}${more ? "+" : ""} (${counts.get("pending") ?? 0} pending, ${counts.get("added") ?? 0} in the network, ${counts.get("dismissed") ?? 0} dismissed)${more ? `; more exist: list_provider_candidates with offset ${String(read.nextOffset)}` : ""}`,
+      );
+    else if (status === "completed")
+      hints.push("This search found no candidates.");
+  }
+  const other = (discoveriesRead as MarketDiscoveriesRead | undefined)
+    ?.discoveries?.find(
+      (discovery) =>
+        isActiveSearch(discovery.status) &&
+        discovery.discoveryId !== openDiscoveryId,
+    );
+  if (other)
+    hints.push(
+      "Another search is running; discover_providers is refused until it finishes.",
+    );
+  return hints;
+}
+
 const brokerProfilePrefetch: OperatorPageContextEntry["prefetch"] = [
   [
     {
@@ -68,6 +131,43 @@ export const operatorAdminPageContexts: readonly OperatorPageContextEntry[] = [
     staticHints: [
       "The list's status, state and coverage line filters match list_broker_network_profiles status, writingState and lineOfBusinessCode; its country filter has no tool equivalent.",
       "Related broker records are the providers the operator checked in the list.",
+      "The Find markets tab (?tab=markets) searches the public web for new markets: start one with discover_providers and read earlier searches with list_provider_discoveries.",
+    ],
+  },
+  {
+    // Layered over operator_brokers by the Find markets tab; the entityId is
+    // the search the operator has open.
+    pageTypes: ["operator_broker_markets"],
+    noun: "provider market search",
+    families: ["broker_network"],
+    prefetch: [
+      [
+        {
+          toolName: "list_provider_candidates",
+          input: ({ focus }) =>
+            focus.entityId
+              ? { discoveryId: focus.entityId, limit: 25 }
+              : undefined,
+          partial:
+            "compact rows for the open search's first 25 candidates, without citations; list_provider_candidates with offset reads more and with candidateIds (up to 3) reads their cited evidence",
+        },
+        {
+          toolName: "list_provider_discoveries",
+          input: () => ({ limit: 5 }),
+          partial:
+            "the 5 newest searches; list_provider_discoveries reads more",
+        },
+      ],
+    ],
+    hints: (results, page) =>
+      providerMarketHints(
+        results.get("list_provider_candidates"),
+        results.get("list_provider_discoveries"),
+        page.entityId,
+      ),
+    staticHints: [
+      "Find markets searches the public web for new insurance markets for the provider network. Start a search with discover_providers (paid, exact approval, one at a time) using coverage catalog labels and USPS state codes.",
+      "Candidates are untrusted web evidence. Add or dismiss them with review_provider_candidates using the loaded candidateId values; read the cited evidence for up to three with list_provider_candidates candidateIds first.",
     ],
   },
   {
