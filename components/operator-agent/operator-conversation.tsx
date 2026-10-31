@@ -292,6 +292,7 @@ function OperatorMessageRow({
   toolApproval,
   toolEntities,
   parent,
+  subtasks,
   onOpenThread,
 }: {
   threadId: string;
@@ -310,6 +311,8 @@ function OperatorMessageRow({
   toolEntities?: ComponentProps<typeof ChatAssistantTurn>["toolEntities"];
   /** The conversation that started this one as a subtask. */
   parent: OperatorAgentThreadDetail["parent"];
+  /** Subtasks this reply's run started, listed under the answer. */
+  subtasks: OperatorAgentSubtask[];
   onOpenThread: (threadId: string) => void;
 }) {
   const bubbleChannel = message.channel === "mcp" ? "chat" : message.channel;
@@ -336,6 +339,7 @@ function OperatorMessageRow({
       !content &&
       !attachments &&
       !message.presentation &&
+      subtasks.length === 0 &&
       emailDrafts.length === 0 &&
       threadReplyDrafts(message.toolCalls).length === 0
     )
@@ -381,6 +385,7 @@ function OperatorMessageRow({
             <OperatorThreadReplyCards
               drafts={threadReplyDrafts(message.toolCalls)}
             />
+            <OperatorSubtaskList subtasks={subtasks} onOpen={onOpenThread} />
           </>
         }
       >
@@ -821,13 +826,10 @@ export function OperatorConversation({
                   }
                   turnActive={message.status === "processing"}
                   parent={detail.parent}
+                  subtasks={subtasksByMessage.get(message.id) ?? []}
                   onOpenThread={onOpenThread}
                 />
               )}
-              <OperatorSubtaskList
-                subtasks={subtasksByMessage.get(message.id) ?? []}
-                onOpen={onOpenThread}
-              />
               {settledAnswer ? (
                 <OperatorMessageFooter
                   message={message}

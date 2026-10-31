@@ -64,10 +64,13 @@ function TabButton({
   hint,
   creator,
   icon,
+  compact = false,
   position,
   variant = "bar",
 }: {
   closeShortcut?: ShortcutKey[];
+  /** A smaller bar tab inside a subtask group. */
+  compact?: boolean;
   /** Leads the label in place of the creator, such as a subtask's status. */
   icon?: ReactNode;
   /** Hover text beside the label, such as who started the chat. */
@@ -96,7 +99,7 @@ function TabButton({
       role="presentation"
       className={cn(
         "group/tab relative flex shrink-0 items-center",
-        variant === "bar" && "h-7 max-w-52",
+        variant === "bar" && (compact ? "h-6 max-w-44" : "h-7 max-w-52"),
         variant === "row" && "h-8 w-full",
         rail && "size-8",
       )}
@@ -125,6 +128,10 @@ function TabButton({
             : rail
               ? RAIL_ITEM_CLASS
               : ROW_ITEM_CLASS,
+          // A leading avatar or mark sits concentric with the rounded end.
+          variant === "bar" &&
+            compact &&
+            cn("gap-1.5 px-2.5", icon ? "pl-[5px]" : creator && "pl-1"),
           active
             ? "text-foreground"
             : "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
@@ -238,7 +245,7 @@ function ThreadTab({
   )
     return null;
 
-  const parentTab = (
+  const parentTab = (compact = false) => (
     <TabButton
       active={active}
       label={summary?.title ?? "Chat"}
@@ -249,20 +256,20 @@ function ThreadTab({
       onClose={() => closeTab(tab.threadId)}
       closeShortcut={active ? ["alt", "w"] : undefined}
       variant={variant}
+      compact={compact}
     />
   );
   const subtasks = summary?.subtasks ?? [];
-  if (!subtasks.length) return parentTab;
+  if (!subtasks.length) return parentTab();
   const visible = open && dock.view === "chat";
+  const expanded =
+    visible &&
+    (active || subtasks.some((task) => task.threadId === dock.activeThreadId));
   return (
     <SubtaskTabGroup
-      parentTab={parentTab}
+      parentTab={parentTab(expanded && (variant ?? "bar") === "bar")}
       subtasks={subtasks}
-      expanded={
-        visible &&
-        (active ||
-          subtasks.some((task) => task.threadId === dock.activeThreadId))
-      }
+      expanded={expanded}
       activeThreadId={visible ? dock.activeThreadId : null}
       onOpen={(threadId) => dock.openThread(threadId)}
       onOpenParent={() => dock.openThread(tab.threadId)}
@@ -304,6 +311,7 @@ function SubtaskTabGroup({
       icon={<SubtaskStatusGlyph status={task.status} />}
       onSelect={() => onOpen(task.threadId)}
       variant={variant}
+      compact
     />
   ));
   if (rail)
@@ -334,7 +342,7 @@ function SubtaskTabGroup({
         "flex shrink-0 gap-0.5",
         row
           ? "w-full flex-col [&>*:not(:first-child)]:pl-4"
-          : "items-center rounded-full bg-foreground/[0.03] p-0.5 [&>*:not(:first-child)]:max-w-40",
+          : "items-center rounded-full bg-foreground/[0.03] p-0.5",
       )}
     >
       {parentTab}
