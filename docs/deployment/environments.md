@@ -126,34 +126,39 @@ which force-pushes the PR head to `preview/pr-<number>`; removing the label or
 closing the PR deletes that branch. Each preview build deploys to its own Convex
 preview deployment (named for the branch) and runs
 `reviewerAccounts:provisionPreview`, which seeds the reviewer account.
-Convex deletes idle preview deployments automatically.
-`.github/workflows/preview-e2e.yml` runs `scripts/preview-e2e.mjs` when Vercel
-reports the deployment ready and comments the result on the PR. Pushes made with
-`GITHUB_TOKEN` are refused when the commit changes `.github/workflows/`; use a
-token with the `workflow` scope if that matters.
+Convex deletes idle preview deployments automatically. Previews exist so a
+browser agent (for example in Conductor Cloud) can test a PR before it merges.
+`gh` pushes with `GITHUB_TOKEN` are refused when the commit changes
+`.github/workflows/`; use a token with the `workflow` scope if that matters.
 
 One-time setup:
 
 - Vercel (Spot project, Preview environment only): `CONVEX_DEPLOY_KEY` set to
   a Convex *preview* deploy key from the Convex dashboard (Project settings →
-  Preview Deploy Keys). Never reuse the production key.
+  Preview Deploy Keys). Never reuse the production key. The project's Ignored
+  Build Step must be empty; `vercel.json` already limits builds to `main` and
+  `preview/**`.
 - Convex dashboard (Project settings → Default Environment Variables, Preview):
-  the variables a deployment needs to run (auth keys such as `JWT_PRIVATE_KEY`
-  and `JWKS`, `SITE_URL`, `EMAIL_CONNECTIONS_ENCRYPTION_KEY`, and the AI/email
+  the variables a deployment needs to run (`JWT_PRIVATE_KEY`, `JWKS`,
+  `EMAIL_CONNECTIONS_ENCRYPTION_KEY`, `EMAIL_DELIVERY_MODE=capture`, and any
   provider keys the pages under test use), using non-production values, plus
   `PREVIEW_E2E_PASSWORD`.
-- GitHub secrets: `PREVIEW_E2E_PASSWORD` (same value) and
-  `VERCEL_AUTOMATION_BYPASS_SECRET` (Vercel → Settings → Deployment Protection →
-  Protection Bypass for Automation).
+- Conductor Cloud environment variables: `PREVIEW_E2E_PASSWORD` (same value)
+  and `VERCEL_AUTOMATION_BYPASS_SECRET` (Vercel → Settings → Deployment
+  Protection → Protection Bypass for Automation).
 
-Conductor Cloud workspaces use the same bypass secret. Add
-`VERCEL_AUTOMATION_BYPASS_SECRET` to the Cloud Computer environment in the
-Conductor app (Settings → Cloud → Environment variables) so every cloud
-workspace sees it. A browser opens a protected preview once with
-`<preview-url>/?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET&x-vercel-set-bypass-cookie=true`
-(the cookie then covers later navigation); scripts send the
-`x-vercel-protection-bypass` header, as `scripts/preview-e2e.mjs` does. Never
-commit or print the value.
+Testing a PR in a browser agent:
+
+1. Add the `preview` label and wait for the Vercel build. The stable URL is
+   `https://spot-git-preview-pr-<number>-claritylabs-inc.vercel.app`.
+2. Open it once with
+   `<url>/?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET&x-vercel-set-bypass-cookie=true`;
+   the cookie then covers later navigation. Never commit or print the secret.
+3. Sign in at `/login` with "Use a password instead" as
+   `chrome-review@review.spot.insure` and `$PREVIEW_E2E_PASSWORD`. The account
+   is a demo client with seeded policies (for example `DEMO-GL-0001`).
+4. Remove the label when finished; the branch is deleted, and the Convex preview
+   deployment expires on its own.
 
 CI runs on PRs regardless of their immediate base branch.
 New updates cancel superseded CI for the same PR or ref. Every PR still needs
