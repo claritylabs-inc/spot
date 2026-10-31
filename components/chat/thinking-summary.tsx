@@ -884,7 +884,7 @@ export function ToolActivityCard({
         )}
       </button>
       <DisclosurePanel id={contentId} open={open}>
-        <ul className="border-t border-border py-1">
+        <ul className="max-h-80 overflow-y-auto border-t border-border py-1">
           {calls.map((call, index) => (
             <CallRow
               key={`${call.name}-${index}`}
