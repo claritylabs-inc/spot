@@ -71,6 +71,7 @@ node_modules/
 !/docs/architecture/router-jobs.md
 !/docs/architecture/product-analytics.md
 !/docs/architecture/operator-skills.md
+!/docs/architecture/operator-queue-steer.md
 !/docs/architecture/browser-extension.md
 !/docs/architecture/webmcp.md
 !/docs/architecture/acord-provider-appetite.md
