@@ -45,6 +45,8 @@ type ActivityCall = {
   context?: ToolActivityContext;
   /** Count summary of the returned result ("3 threads"). */
   result?: string;
+  /** Web research provider that answered the call. */
+  researchProvider?: ResearchProvider;
   /** Record the call acted on; resolved through `entities`. */
   target?: { kind: string; id: string };
   /** What a completed write did ("Assign Sarah Chen to Ramp"). */
@@ -83,6 +85,7 @@ export type ChatActivity = {
     status: ActivityStatus;
     context?: ToolActivityContext;
     result?: string;
+    researchProvider?: ResearchProvider;
     target?: { kind: string; id: string };
     change?: string;
     preview?: boolean;
@@ -242,6 +245,7 @@ function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
     status: tool.status,
     context: tool.context,
     result: tool.result,
+    researchProvider: tool.researchProvider,
     target: tool.target,
     change: tool.change,
     preview: tool.preview,
@@ -405,6 +409,32 @@ const BRAND_ICON = "size-4 shrink-0 ring-1 ring-border-subtle";
 
 type ToolBrand = { key: string; icon: ReactNode };
 
+type ResearchProvider = "parallel" | "exa";
+
+const RESEARCH_PROVIDER_BRANDS: Record<
+  ResearchProvider,
+  { name: string; website: string }
+> = {
+  parallel: { name: "Parallel", website: "parallel.ai" },
+  exa: { name: "Exa", website: "exa.ai" },
+};
+
+/**
+ * Tools answered through cl-router web research (Parallel first, Exa as
+ * fallback). Calls that report their provider show it; queued research shows
+ * the primary provider.
+ */
+const RESEARCH_PROVIDER_TOOLS = new Set([
+  "web_search",
+  "research_client",
+  "research_client_profiles",
+  "research_broker",
+  "research_brokers",
+  "research_procurement_information",
+  "discover_providers",
+  "manage_client_web_monitor",
+]);
+
 /** Integrations with a fixed brand; MCP servers resolve their own logo. */
 const INTEGRATION_BRANDS: Partial<
   Record<OperatorToolIntegration, { name: string; website: string }>
@@ -440,7 +470,8 @@ export function hasAwaitingApprovalCall(
 }
 
 /**
- * The mark of what a call touched: the MCP server, the client it acted on,
+ * The mark of what a call touched: the web research provider (Parallel or
+ * Exa), the MCP server, the client it acted on,
  * the website, the integration (Gmail, Slack, Mapbox), or Spot for other
  * platform records. A
  * category glyph remains only where no brand is known (client mailboxes,
@@ -457,6 +488,22 @@ function toolBrand(
       key: `mcp:${mcp.serverId}`,
       icon: <McpToolActivityIcon serverId={mcp.serverId} />,
     };
+  if (RESEARCH_PROVIDER_TOOLS.has(call.name)) {
+    const provider = call.researchProvider ?? "parallel";
+    const brand = RESEARCH_PROVIDER_BRANDS[provider];
+    return {
+      key: `research:${provider}`,
+      icon: (
+        <OrgBrandIcon
+          name={brand.name}
+          website={brand.website}
+          size="xs"
+          shape="circle"
+          className={BRAND_ICON}
+        />
+      ),
+    };
+  }
   const entityKey = call.target && `${call.target.kind}:${call.target.id}`;
   const entity = entityKey ? entities?.[entityKey] : undefined;
   if (entity)
