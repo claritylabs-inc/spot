@@ -364,3 +364,22 @@ export const rotatePassword = internalAction({
     return { status: "rotated" as const, email: REVIEW_EMAIL, userId: account.userId };
   },
 });
+
+/**
+ * Run by `convex deploy --preview-run` on every Vercel preview build. Seeds the
+ * reviewer account with the preview-only `PREVIEW_E2E_PASSWORD` (a default
+ * environment variable for preview deployments) so the preview E2E workflow can
+ * sign in. Skips when the variable is unset.
+ */
+export const provisionPreview = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ status: "created" | "exists" | "skipped" }> => {
+    const password = process.env.PREVIEW_E2E_PASSWORD;
+    if (!password) return { status: "skipped" };
+    const result: { status: "created" | "exists" } = await ctx.runAction(
+      internal.reviewerAccounts.provision,
+      { password },
+    );
+    return { status: result.status };
+  },
+});
