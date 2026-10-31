@@ -331,7 +331,8 @@ function SubtaskTabGroup({
         <SubtaskStack
           subtasks={subtasks}
           onSelect={onOpenParent}
-          className={row ? "ml-5 self-start" : undefined}
+          // Tucked into the parent tab's end padding so it reads as part of it.
+          className={row ? "ml-5 self-start" : "-ml-2.5"}
         />
       </div>
     );
