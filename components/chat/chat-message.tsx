@@ -91,6 +91,7 @@ export function ChatAssistantTurn({
   errorCode,
   messageReference,
   aside,
+  afterActivity,
   after,
   body,
   belowAnswer,
@@ -134,6 +135,8 @@ export function ChatAssistantTurn({
   messageReference?: string;
   /** Rendered beside the answer or thinking indicator, e.g. a stop control. */
   aside?: ReactNode;
+  /** Rendered between the activity and the answer, e.g. guidance the run took. */
+  afterActivity?: ReactNode;
   /** Rendered below the answer regardless of pending state. */
   after?: ReactNode;
   body?: ReactNode;
@@ -213,6 +216,7 @@ export function ChatAssistantTurn({
           />
         </>
       ) : null}
+      {afterActivity}
       {aside ? (
         <div className="flex items-start gap-2">
           {answer}

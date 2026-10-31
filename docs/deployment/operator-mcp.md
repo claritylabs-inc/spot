@@ -75,10 +75,23 @@ Each `run_operator_task` returns a `runId` and `threadId`. Several agents (or
 subagents of one Claude Code or Codex session) can start tasks at once: a call
 without `thread_id` or `conversation_key` uses the connection's default
 conversation only while no task is running there, and otherwise starts its own,
-so parallel calls never cancel each other. Pass `thread_id` to follow up on a
-task; that replaces the conversation's current run. Watch a run with
-`get_operator_run` and `wait_seconds` (up to 60) instead of tight polling, and
-stop it with `cancel_operator_run`, which also stops the subtasks it started.
+so parallel calls never cancel each other. Pass `thread_id` (or
+`conversation_key`) to follow up on a task. While that conversation has a task
+in progress, `if_busy` decides what happens:
+
+- `queue` (the default since October 31, 2026; before then, a follow-up replaced
+  the running task) waits and starts when the current task finishes, in order.
+- `steer` gives the objective to your own running task as guidance at its next
+  step, without restarting it.
+- `replace` stops your own task and starts this one.
+
+Another operator's task is never stopped or steered: `steer` queues instead and
+`replace` is rejected. The result's `delivery` is `started`, `queued` or
+`steered`; a queued or steering call returns an `inputId` until its run exists.
+Watch a run with `get_operator_run` and `wait_seconds` (up to 60) instead of
+tight polling (pass `input_id` for a queued call; it waits until the turn
+starts), and stop it with `cancel_operator_run`, which also stops the subtasks
+it started.
 The operator agent can itself split work into subtasks; they appear as their own
 conversations and in the run's result.
 

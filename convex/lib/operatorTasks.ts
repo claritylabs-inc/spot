@@ -2,6 +2,8 @@ import dayjs from "dayjs";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { pendingOperatorInputs } from "./operatorAgentInputs";
 import { sanitizeOperatorReply } from "./operatorToolOutput";
 
 /** Run states that hold a conversation's turn. */
@@ -126,6 +128,17 @@ export async function postSubtaskNotices(
     const latest = !latestThreads.has(String(task.threadId));
     latestThreads.add(String(task.threadId));
     if (!operatorRunFinished(task) || task.parentNotifiedAt) continue;
+    // A follow-up waiting to start becomes this subtask's next run, which
+    // reports when it finishes.
+    if (
+      latest &&
+      (await pendingOperatorInputs(ctx, task.threadId)).some(
+        (input) =>
+          input.parentThreadId === parentThreadId ||
+          input.operatorUserId === task.operatorUserId,
+      )
+    )
+      continue;
     if (latest) pending.unshift(task);
     else await ctx.db.patch(task._id, { parentNotifiedAt: now });
   }
@@ -172,4 +185,20 @@ export async function afterOperatorRunFinished(
 ) {
   if (run.parentThreadId) await postSubtaskNotices(ctx, run.parentThreadId);
   await postSubtaskNotices(ctx, run.threadId);
+  await scheduleOperatorInputDrain(ctx, run.threadId);
+}
+
+/**
+ * Starts the conversation's next queued message once no run holds it. The
+ * drain runs after the finishing mutation, so its messages (a rejection
+ * notice, subtask notices) land before the next user message.
+ */
+export async function scheduleOperatorInputDrain(
+  ctx: MutationCtx,
+  threadId: Id<"operatorAgentThreads">,
+) {
+  if (!(await pendingOperatorInputs(ctx, threadId, 1)).length) return;
+  await ctx.scheduler.runAfter(0, internal.operatorAgentInputs.drainInternal, {
+    threadId,
+  });
 }

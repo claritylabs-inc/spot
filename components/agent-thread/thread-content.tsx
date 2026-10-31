@@ -1,5 +1,4 @@
 "use client";
-import { RemoveButton } from "@/components/ui/remove-button";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
@@ -7,7 +6,6 @@ import { toast } from "sonner";
 import {
   Archive,
   ArchiveRestore,
-  Clock,
   Copy,
   ExternalLink,
   LockKeyhole,
@@ -38,7 +36,7 @@ import { ChatErrorNotice } from "@/components/chat/chat-message";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { NewChatEmptyState } from "@/components/new-chat-empty-state";
-import { PromptReferenceText } from "@/components/prompt-reference-tag";
+import { QueuedMessageRow } from "@/components/chat/queued-message";
 import { usePdf } from "@/components/pdf-context";
 import { useStagePageCapture } from "@/components/browser-extension/page-capture";
 import { AppShellPortal } from "@/components/app-shell-slots";
@@ -180,53 +178,6 @@ function slackConversationUrl(thread: {
     return `https://slack.com/app_redirect?channel=${encodeURIComponent(thread.slackChannelId)}`;
   }
   return `https://slack.com/archives/${encodeURIComponent(thread.slackChannelId)}/p${thread.slackThreadTs.replace(".", "")}`;
-}
-
-function QueuedThreadMessage({
-  message,
-  sending,
-  onSendNow,
-  onCancel,
-}: {
-  message: PromptInputMessage;
-  sending: boolean;
-  onSendNow: () => void;
-  onCancel: () => void;
-}) {
-  const preview =
-    message.text.trim() ||
-    (message.files.length > 0
-      ? `${message.files.length} attachment${message.files.length === 1 ? "" : "s"}`
-      : "Message");
-  return (
-    <div className="mb-2 flex items-center gap-2 rounded-lg border border-input bg-card px-2.5 py-2">
-      <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/35" />
-      <p
-        className={`min-w-0 flex-1 truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}
-      >
-        Queued:{" "}
-        <PromptReferenceText
-          content={preview}
-          references={message.references ?? []}
-          className="text-foreground/75"
-        />
-      </p>
-      <PillButton
-        type="button"
-        size="compact"
-        onClick={onSendNow}
-        disabled={sending}
-      >
-        {sending ? "Sending" : "Send now"}
-      </PillButton>
-      <RemoveButton
-        type="button"
-        onClick={onCancel}
-        disabled={sending}
-        label="Remove queued message"
-      />
-    </div>
-  );
 }
 
 /** Tenant thread: data, artifact side panels and sending, on the shared chat list. */
@@ -732,8 +683,14 @@ export function UnifiedThreadContent({
               }
               banner={
                 queuedMessage ? (
-                  <QueuedThreadMessage
-                    message={queuedMessage}
+                  <QueuedMessageRow
+                    text={
+                      queuedMessage.text.trim() ||
+                      (queuedMessage.files.length > 0
+                        ? `${queuedMessage.files.length} attachment${queuedMessage.files.length === 1 ? "" : "s"}`
+                        : "Message")
+                    }
+                    references={queuedMessage.references}
                     sending={sendingQueuedNow}
                     onSendNow={sendQueuedNow}
                     onCancel={() => setQueuedMessage(null)}

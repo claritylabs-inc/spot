@@ -56,6 +56,45 @@ type BackendMessage = {
   attachments?: BackendAttachment[];
   /** A subtask's objective, written by the run that started it. */
   fromParentTask?: boolean;
+  steers?: BackendSteer[];
+};
+
+type BackendSteer = {
+  id: string;
+  content: string;
+  createdAt: number;
+  userId?: string;
+  userName?: string;
+  fromParentTask: boolean;
+};
+
+/** Guidance a run took while it worked, shown inside its reply. */
+export type OperatorAgentSteer = {
+  id: string;
+  content: string;
+  createdAt: number;
+  sender?: OperatorPerson;
+  name: string;
+  fromParentTask: boolean;
+};
+
+type BackendPendingInput = {
+  id: string;
+  userId: string;
+  mode: "queue" | "steer";
+  status: "pending" | "failed" | "applied" | "started" | "cancelled";
+  content: string;
+  attachmentCount: number;
+  fromParentTask: boolean;
+  error?: string;
+  createdAt: number;
+  canCancel: boolean;
+  canSendNow: boolean;
+};
+
+/** A message waiting while a run holds the conversation, visible to every viewer. */
+export type OperatorPendingInput = Omit<BackendPendingInput, "userId"> & {
+  sender: OperatorPerson;
 };
 
 type OperatorAgentAttachment = {
@@ -141,6 +180,7 @@ type GetThreadResult = {
   people: OperatorPerson[];
   messages: BackendMessage[];
   activeRun: BackendRun | null;
+  pendingInputs: BackendPendingInput[];
   confirmations: BackendConfirmation[];
   /** The conversation that started this one as a subtask. */
   parent: { threadId: string; title: string } | null;
@@ -162,6 +202,16 @@ type SendMessageArgs = {
   planMode?: boolean;
   /** Skills invoked with `/name` in the composer. */
   skills?: string[];
+  whenBusy?: OperatorWhenBusy;
+};
+export type OperatorWhenBusy = "queue" | "steer" | "replace";
+export type OperatorSendResult = {
+  threadId: string;
+  delivery: "started" | "queued" | "steered";
+  messageId?: string;
+  runId?: string;
+  inputId?: string;
+  duplicate: boolean;
 };
 type OperatorUploadTarget = {
   uploadUrl: string;
@@ -245,6 +295,7 @@ export type OperatorAgentMessage = {
   toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
   fromParentTask?: boolean;
+  steers?: OperatorAgentSteer[];
 };
 
 type OperatorAgentToolCall = {
@@ -261,8 +312,10 @@ export type OperatorAgentThreadDetail = {
   viewerUserId: string | null;
   messages: OperatorAgentMessage[];
   activeRun: boolean;
+  activeRunStatus: BackendRunStatus | null;
   /** Another operator's run holds the conversation; only they can stop it. */
   activeRunOperator: OperatorPerson | null;
+  pendingInputs: OperatorPendingInput[];
   confirmations: OperatorAgentConfirmation[];
   parent: { threadId: string; title: string } | null;
   subtasks: OperatorAgentSubtask[];
@@ -346,8 +399,23 @@ export const operatorAgentApi = {
   sendMessage: makeFunctionReference<
     "mutation",
     SendMessageArgs,
-    { threadId: string; messageId: string; runId: string; duplicate: boolean }
+    OperatorSendResult
   >("operatorAgent:sendMessage"),
+  cancelInput: makeFunctionReference<
+    "mutation",
+    { inputId: string },
+    { cancelled: true; content: string }
+  >("operatorAgentInputs:cancelInput"),
+  sendInputNow: makeFunctionReference<
+    "mutation",
+    { inputId: string },
+    { threadId: string; runId: string }
+  >("operatorAgentInputs:sendInputNow"),
+  sendInputInNewChat: makeFunctionReference<
+    "mutation",
+    { inputId: string },
+    { threadId: string; runId: string }
+  >("operatorAgentInputs:sendInputInNewChat"),
   rerunTurn: makeFunctionReference<
     "mutation",
     { runId: string; includeErrorContext: boolean },
@@ -414,7 +482,9 @@ export function normalizeOperatorAgentThread(
       viewerUserId: null,
       messages: [],
       activeRun: false,
+      activeRunStatus: null,
       activeRunOperator: null,
+      pendingInputs: [],
       confirmations: [],
       parent: null,
       subtasks: [],
@@ -457,8 +527,28 @@ export function normalizeOperatorAgentThread(
       toolIntegrations: message.toolIntegrations,
       attachments: message.attachments,
       fromParentTask: message.fromParentTask,
+      steers: message.steers?.map((steer) => {
+        const sender = steer.userId ? people.get(steer.userId) : undefined;
+        return {
+          id: steer.id,
+          content: steer.content,
+          createdAt: steer.createdAt,
+          sender,
+          name: sender?.name ?? (steer.userName?.trim() || "Operator"),
+          fromParentTask: steer.fromParentTask,
+        };
+      }),
     })),
     activeRun: value.activeRun !== null,
+    activeRunStatus: value.activeRun?.status ?? null,
+    pendingInputs: value.pendingInputs.map(({ userId, ...input }) => ({
+      ...input,
+      sender: people.get(userId) ?? {
+        userId,
+        name: "Another operator",
+        avatarUrl: null,
+      },
+    })),
     activeRunOperator:
       value.activeRun && value.activeRun.operatorUserId !== value.viewerUserId
         ? (people.get(value.activeRun.operatorUserId) ?? {

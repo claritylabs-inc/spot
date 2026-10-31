@@ -620,6 +620,10 @@ export interface SpotPromptInputHandle {
   focus: () => void;
   /** Stages files like the attach button; false when the input is not mounted. */
   addFiles: (files: File[]) => boolean;
+  /** Submits the current prompt as Enter would. */
+  submit: () => void;
+  /** True when no text or reference is typed. */
+  isEmpty: () => boolean;
 }
 
 export interface SpotPromptInputProps {
@@ -637,6 +641,11 @@ export interface SpotPromptInputProps {
   status?: ChatStatus;
   submittedLabel?: string;
   onStop?: () => void;
+  /**
+   * While busy, keeps a send button with this label (beside Stop when
+   * `onStop` is set), so a message can still be sent: "Steer" or "Queue".
+   */
+  busySubmitLabel?: string;
   orgId?: Id<"organizations">;
   /** `dock` is the agent dock's flat single-row composer. */
   variant?: "default" | "command" | "dock";
@@ -672,6 +681,7 @@ export const SpotPromptInput = forwardRef<
     status,
     submittedLabel = "Sending",
     onStop,
+    busySubmitLabel,
     orgId,
     variant = "default",
     contextChip,
@@ -1239,6 +1249,9 @@ export const SpotPromptInput = forwardRef<
         addFilesRef.current(files);
         return true;
       },
+      submit: () => wrapperRef.current?.querySelector("form")?.requestSubmit(),
+      isEmpty: () =>
+        tokens.every((token) => token.type === "text" && !token.text.trim()),
     }),
     [
       activeTextTokenId,
@@ -1389,22 +1402,37 @@ export const SpotPromptInput = forwardRef<
     <div className="flex items-center gap-1">
       {toolbarEnd}
       {showAttach && <AttachmentActionButtons />}
-      {isGenerating && onStop ? (
-        <PillButton
-          type="button"
-          size="compact"
-          onClick={handleStopClick}
-          roomyOnMobile={roomyOnMobile}
-        >
-          <Square
-            className={
-              roomyOnMobile
-                ? "size-3.5 fill-current sm:size-3"
-                : "size-3 fill-current"
-            }
-          />
-          Stop
-        </PillButton>
+      {isGenerating && (onStop || busySubmitLabel) ? (
+        <>
+          {onStop ? (
+            <PillButton
+              type="button"
+              size="compact"
+              onClick={handleStopClick}
+              roomyOnMobile={roomyOnMobile}
+            >
+              <Square
+                className={
+                  roomyOnMobile
+                    ? "size-3.5 fill-current sm:size-3"
+                    : "size-3 fill-current"
+                }
+              />
+              Stop
+            </PillButton>
+          ) : null}
+          {busySubmitLabel ? (
+            <PillButton
+              type="submit"
+              size="compact"
+              disabled={disabled}
+              roomyOnMobile={roomyOnMobile}
+            >
+              <ArrowUp className="size-3.5" />
+              {busySubmitLabel}
+            </PillButton>
+          ) : null}
+        </>
       ) : isDockVariant ? (
         <PillButton
           type="submit"

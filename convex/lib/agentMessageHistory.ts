@@ -2,6 +2,7 @@ import type { JSONValue, ModelMessage } from "ai";
 import { parseWorkflowOutcome } from "./workflows/types";
 import { slackThreadContextText } from "./slackThreadContext";
 import { stripLeakedToolCallText } from "./leakedToolCallText";
+import { operatorSteerArtifact } from "./operatorAgentInputs";
 
 export type AgentToolSurface = "web" | "email" | "imessage" | "slack" | "mcp";
 
@@ -62,6 +63,11 @@ const textEncoder = new TextEncoder();
 
 export function estimateAgentHistoryTokens(value: string): number {
   return Math.max(1, Math.ceil(textEncoder.encode(value).byteLength / 3));
+}
+
+/** The turn an operator steer belongs to. */
+function steeredUserMessageId(message: AgentHistoryMessage): string | undefined {
+  return operatorSteerArtifact(message)?.userMessageId;
 }
 
 function isModelHistoryMessage(message: AgentHistoryMessage): boolean {
@@ -129,6 +135,18 @@ export function selectBoundedAgentHistory<T extends AgentHistoryMessage>(
 
   const turns: T[][] = [];
   for (const message of filtered) {
+    // Guidance sent while a run worked joins that run's turn, before its reply.
+    const steeredTurn = message.role === "user" ? steeredUserMessageId(message) : undefined;
+    const turn = steeredTurn
+      ? turns.find((candidate) => candidate[0]._id === steeredTurn)
+      : undefined;
+    if (turn) {
+      const reply = turn.findIndex(
+        (item, index) => index > 0 && !steeredUserMessageId(item),
+      );
+      turn.splice(reply < 0 ? turn.length : reply, 0, message);
+      continue;
+    }
     if (message.role === "user") {
       turns.push([message]);
       continue;

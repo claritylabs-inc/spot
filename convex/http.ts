@@ -1486,6 +1486,13 @@ async function handleOperatorMcpToolCall(
     const objective =
       typeof args.objective === "string" ? args.objective.trim() : "";
     if (!objective) throw new Error("Missing objective parameter");
+    if (
+      args.if_busy !== undefined &&
+      args.if_busy !== "queue" &&
+      args.if_busy !== "steer" &&
+      args.if_busy !== "replace"
+    )
+      throw new Error("if_busy must be queue, steer or replace");
     const attachments = await storeOperatorMcpAttachments(
       ctx,
       args.attachments,
@@ -1508,6 +1515,11 @@ async function handleOperatorMcpToolCall(
           content: objective,
           dedupeKey: requestKey,
           attachments: attachments.length ? attachments : undefined,
+          ...(args.if_busy === "queue" ||
+          args.if_busy === "steer" ||
+          args.if_busy === "replace"
+            ? { ifBusy: args.if_busy }
+            : {}),
         },
       );
       if (queued.duplicate) {
@@ -1521,16 +1533,36 @@ async function handleOperatorMcpToolCall(
   }
 
   if (name === "get_operator_run") {
-    const runId =
-      typeof args.run_id === "string"
-        ? (args.run_id as Id<"operatorAgentRuns">)
-        : undefined;
-    if (!runId) throw new Error("Missing run_id parameter");
     const waitSeconds =
       typeof args.wait_seconds === "number" && Number.isFinite(args.wait_seconds)
         ? Math.min(Math.max(Math.floor(args.wait_seconds), 0), 60)
         : 0;
     const deadline = Date.now() + waitSeconds * 1_000;
+    // A queued run_operator_task has an input until its turn starts.
+    let input:
+      | { status: string; runId?: Id<"operatorAgentRuns"> }
+      | undefined;
+    if (typeof args.input_id === "string") {
+      const readInput = () =>
+        ctx.runQuery((internal as any).operatorAgent.getInputForOperatorInternal, {
+          operatorUserId,
+          inputId: args.input_id as string,
+        });
+      input = await readInput();
+      while (input?.status === "pending" && Date.now() < deadline) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(1_000, deadline - Date.now())),
+        );
+        input = await readInput();
+      }
+      if (!input?.runId) return mcpTextResult({ input });
+    }
+    const runId =
+      input?.runId ??
+      (typeof args.run_id === "string"
+        ? (args.run_id as Id<"operatorAgentRuns">)
+        : undefined);
+    if (!runId) throw new Error("Missing run_id or input_id parameter");
     let result = await ctx.runQuery(
       (internal as any).operatorAgent.getRunViewForOperatorInternal,
       { operatorUserId, runId },
@@ -1559,9 +1591,10 @@ async function handleOperatorMcpToolCall(
         ...result,
         run: { ...result.run, lastError: undefined },
         failure,
+        ...(input ? { input } : {}),
       });
     }
-    return mcpTextResult(result);
+    return mcpTextResult(input ? { ...result, input } : result);
   }
 
   if (name === "cancel_operator_run") {
