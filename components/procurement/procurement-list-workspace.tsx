@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   Copy,
   FileSearch,
@@ -80,6 +80,7 @@ import { useFollowedState } from "@/hooks/use-followed-state";
 import { useLocalDraft } from "@/hooks/use-local-draft";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
 import { coverageRequestLabel } from "@/lib/insurance-intake-details";
@@ -147,10 +148,23 @@ function RequestPreviewSummary({
   /** Rows shown first, in the same list. */
   children?: ReactNode;
 }) {
-  const details = useQuery(api.procurementRequests.get, { requestId });
-  const providerPanel = useQuery(api.providerOutreach.getPanel, { requestId });
-  const clientPanel = useQuery(api.clientOutreach.getPanel, { requestId });
-  const links = useQuery(
+  const details = useCachedQuery(
+    "procurementRequests.get",
+    api.procurementRequests.get,
+    { requestId },
+  );
+  const providerPanel = useCachedQuery(
+    "providerOutreach.getPanel",
+    api.providerOutreach.getPanel,
+    { requestId },
+  );
+  const clientPanel = useCachedQuery(
+    "clientOutreach.getPanel",
+    api.clientOutreach.getPanel,
+    { requestId },
+  );
+  const links = useCachedQuery(
+    "procurementPacket.listLinks",
     api.procurementPacket.listLinks,
     readOnly ? "skip" : { requestId },
   );
@@ -267,11 +281,16 @@ function ProcurementRequestPreview({
   onClose: () => void;
   readOnly: boolean;
 }) {
-  const details = useQuery(api.procurementRequests.get, {
-    requestId: request._id,
-  });
+  const details = useCachedQuery(
+    "procurementRequests.get",
+    api.procurementRequests.get,
+    {
+      requestId: request._id,
+    },
+  );
   const currentRequest = details?.request ?? request;
-  const links = useQuery(
+  const links = useCachedQuery(
+    "procurementPacket.listLinks",
     api.procurementPacket.listLinks,
     readOnly ? "skip" : { requestId: request._id },
   );
@@ -660,16 +679,19 @@ export function ProcurementListWorkspace({
   const router = useRouter();
   const allClients = !clientOrgId;
   const scopeKey = clientOrgId ?? "all";
-  const clientRows = useQuery(
+  const clientRows = useCachedQuery(
+    "procurementRequests.list",
     api.procurementRequests.list,
     clientOrgId ? { clientOrgId, limit: 100 } : "skip",
   );
-  const allRows = useQuery(
+  const allRows = useCachedQuery(
+    "procurementRequests.listAcrossClients",
     api.procurementRequests.listAcrossClients,
     allClients ? { limit: 100 } : "skip",
   );
   const requestRows = allClients ? allRows?.requests : clientRows;
-  const policyRows = useQuery(
+  const policyRows = useCachedQuery(
+    "procurementRequests.listPolicyOptions",
     api.procurementRequests.listPolicyOptions,
     clientOrgId ? { clientOrgId } : "skip",
   );

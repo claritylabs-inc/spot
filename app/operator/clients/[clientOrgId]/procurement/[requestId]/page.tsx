@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { useQuery } from "convex/react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -16,6 +15,7 @@ import {
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   useCachedOperatorClients,
@@ -31,9 +31,13 @@ export default function OperatorProcurementRequestPage() {
   const searchParams = useSearchParams();
   const current = useCachedOperatorCurrent();
   const clients = useCachedOperatorClients();
-  const request = useQuery(api.procurementRequests.get, {
-    requestId: requestId as Id<"procurementRequests">,
-  });
+  const request = useCachedQuery(
+    "procurementRequests.get",
+    api.procurementRequests.get,
+    {
+      requestId: requestId as Id<"procurementRequests">,
+    },
+  );
   const client = clients?.find((row) => row._id === clientOrgId) ?? null;
   const [workspaceActions, setWorkspaceActions] = useState<ReactNode>(null);
   const [rightPanel, setRightPanel] = useState<ReactNode>(null);

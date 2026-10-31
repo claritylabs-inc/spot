@@ -13,11 +13,12 @@ import {
 } from "@/convex/lib/linesOfBusiness";
 
 import { useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
 import { Globe, Loader2, MapPin, Plus, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { FindMarkets } from "@/components/broker-network/find-markets";
@@ -165,7 +166,11 @@ export default function OperatorBrokersPage() {
     "brokers:statuses",
     [],
   );
-  const rows = useQuery(api.brokerProfiles.list, {});
+  const rows = useCachedQuery(
+    "brokerProfiles.list",
+    api.brokerProfiles.list,
+    {},
+  );
   const countryOptions = useMemo(
     () =>
       [

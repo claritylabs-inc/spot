@@ -1,8 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
-
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 
 type ResolvedThreadId =
@@ -19,7 +18,8 @@ export function useResolvedThreadId(
   raw: string | null,
   requestId?: Id<"procurementRequests">,
 ): ResolvedThreadId {
-  const resolved = useQuery(
+  const resolved = useCachedQuery(
+    "teamInbox.resolveThreadId",
     api.teamInbox.resolveThreadId,
     raw ? { threadId: raw, ...(requestId ? { requestId } : {}) } : "skip",
   );

@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useMcpSettings } from "@/components/operator/mcp-settings";
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +23,7 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -47,7 +48,11 @@ export default function OperatorSettingsPage() {
     sectionParam === "skills"
       ? sectionParam
       : "general";
-  const settings = useQuery(api.operator.getAgentSettings);
+  const settings = useCachedQuery(
+    "operator.getAgentSettings",
+    api.operator.getAgentSettings,
+    {},
+  );
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
   const mcp = useMcpSettings(!current || Boolean(current.activeImpersonation));

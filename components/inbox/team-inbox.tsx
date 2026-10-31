@@ -10,7 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
@@ -45,6 +45,10 @@ import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
+import {
+  useCachedPaginatedQuery,
+  useCachedQuery,
+} from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState, useFollowedValue } from "@/hooks/use-followed-state";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
@@ -400,7 +404,11 @@ export function TeamInbox({
     scopeParam || "all",
     "all",
   );
-  const operators = useQuery(api.operator.listOperators);
+  const operators = useCachedQuery(
+    "operator.listOperators",
+    api.operator.listOperators,
+    {},
+  );
   // Stale values (the retired "mine", departed operators) read as no filter.
   const filter =
     followedFilter === "unlinked" ||
@@ -458,11 +466,12 @@ export function TeamInbox({
     results: threads,
     status,
     loadMore,
-  } = usePaginatedQuery(api.teamInbox.list, queryArgs, {
+  } = useCachedPaginatedQuery("teamInbox.list", api.teamInbox.list, queryArgs, {
     initialNumItems: PAGE_SIZE,
   });
   const inboxThreads: InboxThread[] = threads;
-  const clientPanel = useQuery(
+  const clientPanel = useCachedQuery(
+    "clientOutreach.getPanel",
     api.clientOutreach.getPanel,
     requestId ? { requestId } : "skip",
   );
@@ -506,6 +515,10 @@ export function TeamInbox({
         ...(requestId ? { requestId } : {}),
         ...(requestId ? { includeArchived: true } : {}),
       },
+    });
+    convex.prewarmQuery({
+      query: api.teamInbox.resolveThreadId,
+      args: { threadId: thread._id, ...(requestId ? { requestId } : {}) },
     });
     if (thread.request)
       convex.prewarmQuery({

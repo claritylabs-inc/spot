@@ -8,11 +8,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { File, FileImage, FileText, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import {
@@ -661,16 +662,24 @@ export function ClientFilesWorkspace({
     `clients:${clientOrgId}:files:panel`,
     null,
   );
-  const activeResult = useQuery(api.clientFiles.list, {
-    clientOrgId,
-    limit: 200,
-    archived: false,
-  });
-  const archivedResult = useQuery(api.clientFiles.list, {
-    clientOrgId,
-    limit: 200,
-    archived: true,
-  });
+  const activeResult = useCachedQuery(
+    "clientFiles.list",
+    api.clientFiles.list,
+    {
+      clientOrgId,
+      limit: 200,
+      archived: false,
+    },
+  );
+  const archivedResult = useCachedQuery(
+    "clientFiles.list",
+    api.clientFiles.list,
+    {
+      clientOrgId,
+      limit: 200,
+      archived: true,
+    },
+  );
   // Both lists must settle before the tab set, and so the action home, is known.
   const listsReady = activeResult !== undefined && archivedResult !== undefined;
   // Shared availability spans both sources so switching status never removes
@@ -689,10 +698,14 @@ export function ClientFilesWorkspace({
       ? "shared"
       : "private";
   const result = status === "archived" ? archivedResult : activeResult;
-  const policyRows = useQuery(api.policies.listForOrg, {
-    orgId: clientOrgId,
-    documentType: "policy",
-  });
+  const policyRows = useCachedQuery(
+    "policies.listForOrg",
+    api.policies.listForOrg,
+    {
+      orgId: clientOrgId,
+      documentType: "policy",
+    },
+  );
   const { openWithUrl } = usePdf();
   const policies = useMemo(
     () => (policyRows ?? []) as ClientFilePolicyOption[],

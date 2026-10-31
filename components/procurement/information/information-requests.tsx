@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useFollowedState } from "@/hooks/use-followed-state";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   informationApplicability,
   informationCoverageGroups,
@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { Plus, FileQuestion, RefreshCw } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { typeStyle } from "@/lib/typography";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
@@ -31,7 +32,11 @@ import {
 
 export function InformationRequestActions(props: Actions) {
   const { requestId, readOnly, onOpenDrawer: open } = props;
-  const panel = useQuery(api.procurementInformation.panel, { requestId });
+  const panel = useCachedQuery(
+    "procurementInformation.panel",
+    api.procurementInformation.panel,
+    { requestId },
+  );
   const syncInbox = useMutation(api.procurementInformationEmail.syncInbox);
   const [syncing, setSyncing] = useState(false);
   if (readOnly || !panel) return null;
@@ -78,7 +83,11 @@ export function InformationRequestActions(props: Actions) {
 
 export function InformationRequests(props: Actions) {
   const { requestId, readOnly, onOpenDrawer: open } = props;
-  const panel = useQuery(api.procurementInformation.panel, { requestId });
+  const panel = useCachedQuery(
+    "procurementInformation.panel",
+    api.procurementInformation.panel,
+    { requestId },
+  );
   const archive = useMutation(api.procurementInformation.archiveQuestion);
   const { suggestions } = useInformationSuggestions(requestId, readOnly);
   const [search, setSearch] = useFollowedState(

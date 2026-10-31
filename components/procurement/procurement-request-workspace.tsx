@@ -78,7 +78,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   FileText,
   ListChecks,
@@ -149,6 +149,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { DrawerTabs, DrawerTabsList } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import {
@@ -1207,12 +1208,14 @@ function OutreachEditor({
   const createOutreach = useMutation(api.procurementRequests.createOutreach);
   const updateOutreach = useMutation(api.procurementRequests.updateOutreach);
   const stopFollowUps = useMutation(api.providerOutreach.stop);
-  const outreachPanel = useQuery(
+  const outreachPanel = useCachedQuery(
+    "providerOutreach.getPanel",
     api.providerOutreach.getPanel,
     readOnly ? "skip" : { requestId },
   );
   const [outreachId, setOutreachId] = useState(outreach?._id);
-  const currentRequest = useQuery(
+  const currentRequest = useCachedQuery(
+    "procurementRequests.get",
     api.procurementRequests.get,
     outreachId ? { requestId } : "skip",
   );
@@ -1822,20 +1825,40 @@ export function ProcurementRequestWorkspace({
     `procurement:${requestId}:application-section`,
     "Contact details",
   );
-  const result = useQuery(api.procurementRequests.get, { requestId });
-  const policies = useQuery(api.procurementRequests.listPolicyOptions, {
-    clientOrgId,
-  });
-  const policyRows = useQuery(api.policies.listForOrg, {
-    orgId: clientOrgId,
-    documentType: "policy",
-  });
+  const result = useCachedQuery(
+    "procurementRequests.get",
+    api.procurementRequests.get,
+    { requestId },
+  );
+  const policies = useCachedQuery(
+    "procurementRequests.listPolicyOptions",
+    api.procurementRequests.listPolicyOptions,
+    {
+      clientOrgId,
+    },
+  );
+  const policyRows = useCachedQuery(
+    "policies.listForOrg",
+    api.policies.listForOrg,
+    {
+      orgId: clientOrgId,
+      documentType: "policy",
+    },
+  );
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const clients = useCachedOperatorClients();
-  const proposals = useQuery(api.procurementProposals.list, { requestId });
-  const informationForms = useQuery(api.procurementInformation.operatorForms, {
-    requestId,
-  });
+  const proposals = useCachedQuery(
+    "procurementProposals.list",
+    api.procurementProposals.list,
+    { requestId },
+  );
+  const informationForms = useCachedQuery(
+    "procurementInformation.operatorForms",
+    api.procurementInformation.operatorForms,
+    {
+      requestId,
+    },
+  );
   const providerOutreach = useProviderOutreach(requestId, readOnly, (target) =>
     setPanel({ kind: "provider-email", ...target }),
   );

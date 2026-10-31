@@ -10,9 +10,10 @@ import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-ta
 import { usePdf } from "@/components/pdf-context";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { FileText, Loader2, Plus, Upload } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
 import { useFollowedState } from "@/hooks/use-followed-state";
@@ -91,17 +92,23 @@ export function ClientRequestsList({
   onRightPanel: (panel: ReactNode) => void;
 }) {
   const router = useRouter();
-  const viewer = useQuery(api.users.viewer, {});
-  const viewerOrg = useQuery(
+  const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
+  const viewerOrg = useCachedQuery(
+    "orgs.viewerOrg",
     api.orgs.viewerOrg,
     viewer && !viewer.intakeRestricted ? {} : "skip",
   );
   const canViewRequests = !!viewerOrg?.org && viewerOrg.org.type === "client";
-  const rows = useQuery(
+  const rows = useCachedQuery(
+    "clientProcurementRequests.list",
     api.clientProcurementRequests.list,
     canViewRequests ? {} : "skip",
   );
-  const drafts = useQuery(api.requestIntake.drafts, {});
+  const drafts = useCachedQuery(
+    "requestIntake.drafts",
+    api.requestIntake.drafts,
+    {},
+  );
   const start = useMutation(api.requestIntake.start);
   useEffect(() => {
     if (viewer?.intakeRestricted || (viewer && viewerOrg === null)) {
@@ -219,7 +226,11 @@ export function ClientRequestDetail({
   onBreadcrumb: (detail: string | null) => void;
   onRightPanel: (panel: ReactNode) => void;
 }) {
-  const details = useQuery(api.clientProcurementRequests.get, { requestId });
+  const details = useCachedQuery(
+    "clientProcurementRequests.get",
+    api.clientProcurementRequests.get,
+    { requestId },
+  );
   const generateUploadUrl = useMutation(
     api.clientProcurementRequests.generateUploadUrl,
   );

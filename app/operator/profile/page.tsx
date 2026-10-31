@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { AgentDockPlacementPreference } from "@/components/profile/agent-dock-placement-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { OPERATOR_EMAIL_ADDRESS } from "@/convex/lib/operatorEmailAddress";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
@@ -58,7 +59,11 @@ type TeamEmailSettingsData = Extract<
 >;
 
 function TeamEmailSettings() {
-  const settings = useQuery(api.operatorEmailSettings.get, {});
+  const settings = useCachedQuery(
+    "operatorEmailSettings.get",
+    api.operatorEmailSettings.get,
+    {},
+  );
   if (settings === undefined) return null;
   if (!settings.configured) {
     return (

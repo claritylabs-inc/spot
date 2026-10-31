@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
@@ -16,6 +15,7 @@ import {
   type StatusPresentation,
 } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import type { PageContext } from "@/hooks/use-page-context";
@@ -261,8 +261,12 @@ export default function OperatorAuditPage() {
   const operatorParam = params.get("operator");
   const sourceParam = params.get("source");
   const source = isSource(sourceParam) ? sourceParam : undefined;
-  const operators = useQuery(api.operatorAudit.operators, {});
-  const latest = useQuery(api.operatorAudit.list, {
+  const operators = useCachedQuery(
+    "operatorAudit.operators",
+    api.operatorAudit.operators,
+    {},
+  );
+  const latest = useCachedQuery("operatorAudit.list", api.operatorAudit.list, {
     operatorUserId: (operatorParam as Id<"users"> | null) ?? undefined,
     source,
     limit,
