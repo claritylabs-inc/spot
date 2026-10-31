@@ -1,0 +1,57 @@
+name: Preview E2E
+
+# Runs when Vercel finishes a `preview/pr-<number>` deployment (see preview.yml).
+# The preview has its own Convex deployment, seeded by `provisionPreview`.
+
+on: deployment_status
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-e2e-${{ github.event.deployment.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      startsWith(github.event.deployment.environment, 'Preview') &&
+      startsWith(github.event.deployment.ref, 'preview/pr-')
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      PR_NUMBER: ${{ github.event.deployment.ref }}
+    steps:
+      - uses: useblacksmith/checkout@v1
+        with:
+          ref: ${{ github.event.deployment.sha }}
+
+      - uses: ./.github/actions/setup
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Run E2E against the preview
+        env:
+          APP_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+          PREVIEW_E2E_PASSWORD: ${{ secrets.PREVIEW_E2E_PASSWORD }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/preview-e2e.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-e2e
+          path: .context/qa/preview
+          if-no-files-found: ignore
+
+      - name: Comment result on the PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+        run: |
+          pr="${PR_NUMBER#preview/pr-}"
+          gh pr comment "$pr" --repo "${{ github.repository }}" \
+            --body "Preview E2E **$RESULT** for \`${{ github.event.deployment.sha }}\`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -1,0 +1,40 @@
+name: Preview
+
+# Opt-in Vercel previews. Vercel only builds `main` and `preview/**`, so adding
+# the `preview` label to a PR mirrors its head to `preview/pr-<number>` and
+# removing the label (or closing the PR) deletes that branch.
+
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    # Forks cannot push branches here and must not reach preview secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      BRANCH: preview/pr-${{ github.event.pull_request.number }}
+      WANTED: ${{ github.event.action != 'closed' && contains(github.event.pull_request.labels.*.name, 'preview') }}
+    steps:
+      - if: env.WANTED == 'true'
+        uses: useblacksmith/checkout@v1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Push preview branch
+        if: env.WANTED == 'true'
+        run: git push --force origin "HEAD:refs/heads/$BRANCH"
+
+      - name: Delete preview branch
+        if: env.WANTED != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$BRANCH" || true
