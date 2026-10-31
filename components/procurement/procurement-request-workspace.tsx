@@ -202,7 +202,7 @@ type RequestSummary = {
   replacingPolicyId?: Id<"policies">;
   resultingPolicyId?: Id<"policies">;
   clientVisible?: boolean;
-  forwardingAddress: string;
+  legacyForwardingAddress: string;
   brokerCount: number;
   quoteCount: number;
   emailThreadCount: number;

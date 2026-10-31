@@ -333,7 +333,7 @@ export async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) 
     ...request,
     application: submittedIntakeApplication(request),
     completionOutcome: request.completionOutcome,
-    forwardingAddress: requestForwardingAddress(request),
+    legacyForwardingAddress: requestForwardingAddress(request),
     replacingPolicy: policyLabel(replacingPolicy),
     resultingPolicy: policyLabel(resultingPolicy),
     brokerCount: outreaches.length,
@@ -912,18 +912,17 @@ export async function createProcurementRequestByOperator(
     metadata: { domain: "procurement", requestId, source: args.source },
   });
   const request = await ctx.db.get(requestId);
-  const forwardingAddress = request
-    ? requestForwardingAddress(request)
-    : undefined;
   return {
     requestId,
-    forwardingAddress,
+    legacyForwardingAddress: request
+      ? requestForwardingAddress(request)
+      : undefined,
     deepLink: `/operator/clients/${args.clientOrgId}/procurement/${requestId}`,
     nextActions: [
       {
-        action: "forward_correspondence",
-        why: "Forward the relevant client or provider thread so Spot can preserve the correspondence and associate its attachments with this request",
-        forwardingAddress,
+        tool: "get_procurement_forwarding_address",
+        why: "Get your team address, forward the relevant client or provider thread there, then confirm the team inbox linked it to this request",
+        input: { procurementRequestId: requestId },
       },
       {
         tool: "update_procurement_packet",

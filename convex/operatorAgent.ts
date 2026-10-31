@@ -4468,7 +4468,7 @@ export const forwardingContextInternal = internalQuery({
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     const details = await getProcurementRequestDetails(ctx, args.requestId);
-    return { legacyForwardingAddress: details.request.forwardingAddress };
+    return { legacyForwardingAddress: details.request.legacyForwardingAddress };
   },
 });
 
