@@ -1883,9 +1883,9 @@ http.route({
               version: "2.0.0",
               icons: [
                 {
-                  src: `${siteUrl}/spot-icon.svg`,
-                  mimeType: "image/svg+xml",
-                  sizes: ["any"],
+                  src: `${siteUrl}/spot-icon.png`,
+                  mimeType: "image/png",
+                  sizes: ["256x256"],
                 },
               ],
             },
