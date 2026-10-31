@@ -49,9 +49,10 @@ completion has been verified on all deployed targets.
 
 ## Production releases
 
-Vercel deploys Convex as part of the production build. `vercel.json` sets the
-build command to `npx convex deploy --typecheck=disable --cmd 'npm run build'`
-when `VERCEL_ENV=production`. Preview builds with a Preview-scoped
+Vercel deploys Convex as part of the production build. `vercel.json` runs `scripts/vercel-build.sh` (the build command field is capped
+at 256 characters), which runs
+`npx convex deploy --typecheck=disable --cmd 'npm run build'` when
+`VERCEL_ENV=production`. Preview builds with a Preview-scoped
 `CONVEX_DEPLOY_KEY` run the same deploy against their own Convex preview
 deployment (see Preview deployments); without that key they run
 `npm run build`. Previews never touch production Convex. The Spot Vercel project's Production
