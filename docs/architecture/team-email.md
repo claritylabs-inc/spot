@@ -95,7 +95,10 @@ Nouls (written by a person, sent automatically, colours carry meaning) composed 
 code at the proceed threshold. The verdict is stored as `htmlStyle` and remembered
 per sender and markup signals (`teamEmailHtmlStyleJudgments`), so a sender's
 same-shaped mail is never judged again. Failures or uncertainty store nothing and
-the message renders as sent.
+the message renders as sent. Messages stored before classification are backfilled with
+`npx convex run teamEmailHtmlStyleMigrations:run '{"fn":"teamEmailHtmlStyleMigrations:classifyExisting"}'`
+(add `--prod` for production): it is resumable, skips mail the markup settles, and
+spreads the remaining Jev requests over an hour.
 
 The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
 tabs. Inbox contains conversations whose latest message is inbound; Sent contains

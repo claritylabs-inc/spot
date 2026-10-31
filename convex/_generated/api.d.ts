@@ -648,6 +648,7 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as teamEmailAttachments from "../teamEmailAttachments.js";
 import type * as teamEmailCompose from "../teamEmailCompose.js";
 import type * as teamEmailForwarding from "../teamEmailForwarding.js";
+import type * as teamEmailHtmlStyleMigrations from "../teamEmailHtmlStyleMigrations.js";
 import type * as teamEmailHtmlStyles from "../teamEmailHtmlStyles.js";
 import type * as teamEmailQuotes from "../teamEmailQuotes.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
@@ -1308,6 +1309,7 @@ declare const fullApi: ApiFromModules<{
   teamEmailAttachments: typeof teamEmailAttachments;
   teamEmailCompose: typeof teamEmailCompose;
   teamEmailForwarding: typeof teamEmailForwarding;
+  teamEmailHtmlStyleMigrations: typeof teamEmailHtmlStyleMigrations;
   teamEmailHtmlStyles: typeof teamEmailHtmlStyles;
   teamEmailQuotes: typeof teamEmailQuotes;
   teamEmailReplies: typeof teamEmailReplies;
