@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { AppSidebarHeader } from "@claritylabs-inc/ui/components/app-shell/app-sidebar";
 import type { ReactNode } from "react";
 import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { typeStyle } from "@/lib/typography";
 
 export function SidebarHeader({
@@ -17,6 +18,7 @@ export function SidebarHeader({
   onToggleCollapse,
   backHref,
   icon,
+  homeHref = "/",
 }: {
   collapsed: boolean;
   headerOrgIcon?: string | null;
@@ -26,6 +28,7 @@ export function SidebarHeader({
   onToggleCollapse: () => void;
   backHref?: string;
   icon?: ReactNode;
+  homeHref?: string;
 }) {
   const iconContainerClass = icon
     ? "rounded-md bg-transparent text-foreground"
@@ -33,11 +36,38 @@ export function SidebarHeader({
       ? "rounded-md bg-transparent text-foreground"
       : "rounded-full bg-foreground/8 text-foreground";
 
+  if (collapsed) {
+    return (
+      <>
+        <div className="flex h-top-bar shrink-0 items-center justify-center border-b border-border">
+          <Link
+            href={homeHref}
+            aria-label="Home"
+            title="Home"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-foreground transition-colors hover:bg-foreground/4"
+          >
+            {icon ?? <LogoIcon size={15} />}
+          </Link>
+        </div>
+        <div className="flex shrink-0 justify-center px-2 py-1.5">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label="Expand navigation"
+            title="Expand navigation"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-foreground/4 hover:text-foreground"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <AppSidebarHeader
       collapsed={collapsed}
       onToggleCollapse={onToggleCollapse}
-      collapsedBrand={icon}
       brand={
         <div className="flex min-w-0 items-center gap-2">
           {backHref ? (

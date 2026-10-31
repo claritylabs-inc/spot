@@ -43,6 +43,7 @@ export function OperatorSidebar({
         headerOrgName="Operator"
         onToggleCollapse={onToggleCollapse}
         icon={<LogoIcon size={15} />}
+        homeHref="/operator/clients"
       />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col px-2 py-2">

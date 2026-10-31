@@ -31,6 +31,7 @@ export function OperatorSettingsSidebar({
         headerOrgName="Settings"
         onToggleCollapse={onToggleCollapse}
         backHref="/operator/clients"
+        homeHref="/operator/clients"
       />
       <div className="space-y-1 p-2">
         <SidebarMenuItem
