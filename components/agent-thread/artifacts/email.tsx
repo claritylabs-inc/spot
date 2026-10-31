@@ -212,7 +212,7 @@ export function EmailCardFrame({
   return (
     <OperationalPanel
       as="div"
-      className={`${compact ? "mt-2" : ""} w-fit min-w-64 max-w-md transition-colors hover:bg-muted/50 sm:min-w-72`}
+      className={`${compact ? "mt-2" : ""} w-fit min-w-[min(16rem,100%)] max-w-[min(28rem,100%)] transition-colors hover:bg-muted/50 sm:min-w-[min(18rem,100%)]`}
     >
       {children}
     </OperationalPanel>

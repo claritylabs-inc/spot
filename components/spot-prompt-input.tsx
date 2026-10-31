@@ -1385,10 +1385,21 @@ export const SpotPromptInput = forwardRef<
     <Kbd keys={["tab"]} className="text-muted-foreground/60" />
   ) : null;
 
-  const submitControls = (
-    <div className="flex items-center gap-1">
+  // Ghost icon pills are 40px wide but invisible, so the visible gaps look
+  // uneven next to the filled send pill; tighten them to square in the dock.
+  const toolControls = (
+    <div
+      className={cn(
+        "flex items-center gap-1",
+        isDockVariant && "[&_button[data-icon-only]:not([type=submit])]:w-8",
+      )}
+    >
       {toolbarEnd}
       {showAttach && <AttachmentActionButtons />}
+    </div>
+  );
+  const sendControl = (
+    <div className="flex items-center gap-1">
       {isGenerating && onStop ? (
         <PillButton
           type="button"
@@ -1451,6 +1462,13 @@ export const SpotPromptInput = forwardRef<
           )}
         </PillButton>
       )}
+    </div>
+  );
+
+  const submitControls = (
+    <div className="flex items-center gap-1">
+      {toolControls}
+      {sendControl}
     </div>
   );
 
@@ -1636,11 +1654,12 @@ export const SpotPromptInput = forwardRef<
         {isDockVariant && stackedDock ? (
           <div className="flex w-full min-w-0 flex-col gap-1.5 py-2">
             {tokenEditor}
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="flex min-w-0 flex-1 items-center">
-                {contextChip}
-              </div>
-              {submitControls}
+            {contextChip ? (
+              <div className="flex min-w-0 items-center">{contextChip}</div>
+            ) : null}
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              {toolControls}
+              {sendControl}
             </div>
           </div>
         ) : isDockVariant ? (
