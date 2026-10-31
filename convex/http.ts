@@ -1491,32 +1491,19 @@ async function handleOperatorMcpToolCall(
       args.attachments,
     );
     try {
-      let threadId =
-        typeof args.thread_id === "string"
-          ? (args.thread_id as Id<"operatorAgentThreads">)
-          : undefined;
-      if (!threadId) {
-        const conversationKey =
-          typeof args.conversation_key === "string" &&
-          args.conversation_key.trim()
-            ? args.conversation_key.trim()
-            : `mcp:${identity.tokenId ?? identity.userId}`;
-        threadId = await ctx.runMutation(
-          (internal as any).operatorAgent.createOrGetChannelThreadInternal,
-          {
-            operatorUserId,
-            channel: "mcp",
-            conversationKey,
-            title: "External operator agent",
-          },
-        );
-      }
       const queued = await ctx.runMutation(
-        (internal as any).operatorAgent.enqueueMessageInternal,
+        internal.operatorAgent.enqueueMcpTaskInternal,
         {
           operatorUserId,
-          threadId,
-          channel: "mcp",
+          threadId:
+            typeof args.thread_id === "string"
+              ? (args.thread_id as Id<"operatorAgentThreads">)
+              : undefined,
+          conversationKey:
+            typeof args.conversation_key === "string"
+              ? args.conversation_key
+              : undefined,
+          defaultConversationKey: `mcp:${identity.tokenId ?? identity.userId}`,
           mcpClientId: identity.clientId,
           content: objective,
           dedupeKey: requestKey,
@@ -1526,7 +1513,7 @@ async function handleOperatorMcpToolCall(
       if (queued.duplicate) {
         await deleteOperatorMcpAttachments(ctx, attachments);
       }
-      return mcpTextResult({ threadId, ...queued });
+      return mcpTextResult(queued);
     } catch (error) {
       await deleteOperatorMcpAttachments(ctx, attachments);
       throw error;
@@ -1539,10 +1526,29 @@ async function handleOperatorMcpToolCall(
         ? (args.run_id as Id<"operatorAgentRuns">)
         : undefined;
     if (!runId) throw new Error("Missing run_id parameter");
-    const result = await ctx.runQuery(
+    const waitSeconds =
+      typeof args.wait_seconds === "number" && Number.isFinite(args.wait_seconds)
+        ? Math.min(Math.max(Math.floor(args.wait_seconds), 0), 60)
+        : 0;
+    const deadline = Date.now() + waitSeconds * 1_000;
+    let result = await ctx.runQuery(
       (internal as any).operatorAgent.getRunViewForOperatorInternal,
       { operatorUserId, runId },
     );
+    // Watch: wait until the run finishes or pauses for approval.
+    while (
+      (result?.progress?.status === "queued" ||
+        result?.progress?.status === "running") &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(1_000, deadline - Date.now())),
+      );
+      result = await ctx.runQuery(
+        (internal as any).operatorAgent.getRunViewForOperatorInternal,
+        { operatorUserId, runId },
+      );
+    }
     if (result?.response)
       result.response.content = sanitizeOperatorReply(result.response.content);
     if (result?.run?.status === "failed") {
@@ -1575,7 +1581,7 @@ async function handleOperatorMcpToolCall(
     if (!threadId) throw new Error("Operator run not found");
     const result = await ctx.runMutation(
       (internal as any).operatorAgent.cancelRunInternal,
-      { operatorUserId, threadId },
+      { operatorUserId, threadId, runId },
     );
     return mcpTextResult({ runId, threadId, ...result });
   }
@@ -2062,30 +2068,20 @@ http.route({
           return jsonResponse({ error: "Missing message or attachments" }, 400);
         }
         try {
-          const operatorThreadId = threadId
-            ? (threadId as Id<"operatorAgentThreads">)
-            : await ctx.runMutation(
-                (internal as any).operatorAgent
-                  .createOrGetChannelThreadInternal,
-                {
-                  operatorUserId,
-                  channel: "mcp",
-                  conversationKey: `mcp:${identity.tokenId ?? identity.userId}`,
-                  title: "External operator agent",
-                },
-              );
           const queued = await ctx.runMutation(
-            (internal as any).operatorAgent.enqueueMessageInternal,
+            internal.operatorAgent.enqueueMcpTaskInternal,
             {
               operatorUserId,
-              threadId: operatorThreadId,
-              channel: "mcp",
+              threadId: threadId
+                ? (threadId as Id<"operatorAgentThreads">)
+                : undefined,
+              defaultConversationKey: `mcp:${identity.tokenId ?? identity.userId}`,
               content: operatorMessage || "(attached files)",
               dedupeKey: `mcp-ask:${crypto.randomUUID()}`,
               attachments: attachments.length ? attachments : undefined,
             },
           );
-          return jsonResponse({ threadId: operatorThreadId, ...queued }, 202);
+          return jsonResponse(queued, 202);
         } catch (error) {
           await deleteOperatorMcpAttachments(ctx, attachments);
           throw error;

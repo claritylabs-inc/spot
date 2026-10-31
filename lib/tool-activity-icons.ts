@@ -21,6 +21,7 @@ import {
   Trash2,
   Wrench,
   BookOpenText,
+  Workflow,
 } from "lucide-react";
 
 import type { OperatorAgentToolName } from "@/convex/lib/operatorAgentToolRegistry";
@@ -47,6 +48,7 @@ const toolActivityCategories = {
   archive: { label: "Archive", icon: Archive },
   delete: { label: "Deletion", icon: Trash2 },
   skills: { label: "Skills", icon: BookOpenText },
+  tasks: { label: "Subtasks", icon: Workflow },
 } as const;
 
 const operatorToolCategories = {
@@ -208,6 +210,9 @@ const operatorToolCategories = {
   load_skill: "skills",
   read_skill_file: "skills",
   run_skill_script: "skills",
+  run_operator_tasks: "tasks",
+  get_operator_tasks: "tasks",
+  cancel_operator_tasks: "tasks",
 } satisfies Record<OperatorAgentToolName, keyof typeof toolActivityCategories>;
 
 const clientToolCategories: Record<

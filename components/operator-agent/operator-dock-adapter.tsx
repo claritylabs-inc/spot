@@ -15,6 +15,7 @@ import {
 } from "@/lib/operator-agent-api";
 import { useActiveOperators } from "@/hooks/use-operator-presence";
 import { OperatorAgentChat } from "./operator-agent-chat";
+import { DOCK_SUBTASK_STATUS } from "./operator-subtasks";
 
 function useOperatorThreads(view: AgentDockHistoryView) {
   const rawThreads = useQuery(operatorAgentApi.listThreads, {
@@ -62,6 +63,12 @@ function useOperatorTabSummary(
         ? `Started by ${detail.thread.creator.name}`
         : undefined,
       creator: detail.thread?.creator,
+      subtasks: detail.subtasks.map((task) => ({
+        threadId: task.threadId,
+        title: task.title,
+        status: DOCK_SUBTASK_STATUS[task.status],
+      })),
+      parentThreadId: detail.parent?.threadId,
     };
   }, [rawThread]);
 }

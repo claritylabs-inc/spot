@@ -36,6 +36,7 @@ import {
   operatorThreadContextHref,
 } from "./operator-page-context";
 import { OperatorConversation } from "./operator-conversation";
+import { OperatorHeldComposer } from "./operator-subtasks";
 
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_MAX_AGGREGATE_BYTES = 50 * 1024 * 1024;
@@ -329,7 +330,14 @@ export function OperatorAgentChat({
         onDecision={(confirmation, decision) =>
           void decide(confirmation, decision)
         }
+        onOpenThread={(threadId) => dock.openThread(threadId)}
         composer={
+          detail.activeRunOperator ? (
+            <OperatorHeldComposer
+              operator={detail.activeRunOperator}
+              onNewChat={dock.newChat}
+            />
+          ) : (
           <ChatComposer
             ref={composerRef}
             collabScope={activeThreadId ? `chat:${activeThreadId}` : undefined}
@@ -389,6 +397,7 @@ export function OperatorAgentChat({
               </>
             }
           />
+          )
         }
       />
     </div>

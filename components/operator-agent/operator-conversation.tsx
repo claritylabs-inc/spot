@@ -4,7 +4,7 @@ import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { operatorBatchApprovalDetails } from "@/lib/operator-batch-approval";
 import { Fragment, useMemo, type ComponentProps, type ReactNode } from "react";
 import { useMutation } from "convex/react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Workflow } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import {
   StatusTag,
@@ -39,11 +39,14 @@ import {
   operatorAgentApi,
   type OperatorAgentConfirmation,
   type OperatorAgentMessage,
+  type OperatorAgentSubtask,
   type OperatorAgentThreadDetail,
 } from "@/lib/operator-agent-api";
 import type { OperatorSuggestion } from "@/convex/lib/operatorSuggestionTypes";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { typeStyle } from "@/lib/typography";
+import { cn } from "@/lib/utils";
 import type { OperatorEmailDraftView } from "@/lib/operator-email-draft";
 import {
   OperatorEmailDraftCards,
@@ -57,6 +60,7 @@ import { OperatorEmailMessage } from "./operator-email-message";
 import { OperatorToolPreview } from "./operator-tool-preview";
 import { useAutoOpenOperatorPdfs } from "./operator-pdf-auto-open";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
+import { OperatorSubtaskList } from "./operator-subtasks";
 import {
   operatorConversationEntries,
   OperatorToolActivity,
@@ -287,6 +291,8 @@ function OperatorMessageRow({
   onOpenEmailDraft,
   toolApproval,
   toolEntities,
+  parent,
+  onOpenThread,
 }: {
   threadId: string;
   message: OperatorAgentMessage;
@@ -302,6 +308,9 @@ function OperatorMessageRow({
   onOpenEmailDraft: (draftId: string) => void;
   toolApproval?: ComponentProps<typeof ChatAssistantTurn>["toolApproval"];
   toolEntities?: ComponentProps<typeof ChatAssistantTurn>["toolEntities"];
+  /** The conversation that started this one as a subtask. */
+  parent: OperatorAgentThreadDetail["parent"];
+  onOpenThread: (threadId: string) => void;
 }) {
   const bubbleChannel = message.channel === "mcp" ? "chat" : message.channel;
   const content =
@@ -381,6 +390,38 @@ function OperatorMessageRow({
   }
 
   const emailBody = message.channel === "email" && Boolean(content);
+  // A subtask's objective is Spot's instruction from the parent chat.
+  if (message.fromParentTask)
+    return (
+      <ChatUserTurn
+        own={false}
+        showSender
+        name="Spot"
+        avatar={
+          <span className="flex size-full items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Workflow aria-hidden className="size-3" />
+          </span>
+        }
+        meta={
+          parent ? (
+            <button
+              type="button"
+              onClick={() => onOpenThread(parent.threadId)}
+              className={cn(
+                "min-w-0 truncate text-muted-foreground/50 hover:text-foreground",
+                typeStyle("caption.medium"),
+              )}
+            >
+              from {parent.title}
+            </button>
+          ) : null
+        }
+        createdAt={message.createdAt}
+        channel={bubbleChannel}
+        body={<p className="whitespace-pre-wrap wrap-anywhere">{content}</p>}
+        attachments={attachments}
+      />
+    );
   const senderName =
     message.sender?.name ?? (message.userName?.trim() || "Operator");
   return (
@@ -451,6 +492,7 @@ export function OperatorConversation({
   onDecision,
   composer,
   onFollowUp,
+  onOpenThread,
   presentationDisabled,
 }: {
   activeThreadId: string | null;
@@ -466,9 +508,20 @@ export function OperatorConversation({
   ) => void;
   composer: ReactNode;
   onFollowUp: (message: string) => Promise<void>;
+  /** Opens another operator conversation in the dock, such as a subtask. */
+  onOpenThread: (threadId: string) => void;
   presentationDisabled: boolean;
 }) {
   const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
+  const subtasksByMessage = useMemo(() => {
+    const byMessage = new Map<string, OperatorAgentSubtask[]>();
+    // Started order under the reply that started them.
+    for (const task of [...detail.subtasks].reverse()) {
+      if (!task.messageId) continue;
+      byMessage.set(task.messageId, [...(byMessage.get(task.messageId) ?? []), task]);
+    }
+    return byMessage;
+  }, [detail.subtasks]);
   const threadId = activeThreadId ?? "";
   useAutoOpenOperatorPdfs(threadId, detail.messages);
   const emailDraftsByMessage = useOperatorEmailDrafts(detail.messages);
@@ -767,8 +820,14 @@ export function OperatorConversation({
                     message.status === "processing" && !hasPendingConfirmation
                   }
                   turnActive={message.status === "processing"}
+                  parent={detail.parent}
+                  onOpenThread={onOpenThread}
                 />
               )}
+              <OperatorSubtaskList
+                subtasks={subtasksByMessage.get(message.id) ?? []}
+                onOpen={onOpenThread}
+              />
               {settledAnswer ? (
                 <OperatorMessageFooter
                   message={message}

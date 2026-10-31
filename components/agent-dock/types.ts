@@ -19,10 +19,21 @@ export type AgentDockThread = {
 
 type AgentDockTabStatus = "working" | "approval" | null;
 
+/** A chat another chat's agent started; shown grouped with that chat's tab. */
+export type AgentDockSubtask = {
+  threadId: string;
+  title: string;
+  status: "working" | "approval" | "done" | "failed" | "stopped";
+};
+
 export type AgentDockTabSummary = {
   title: string;
   lastMessageAt: number;
   status: AgentDockTabStatus;
+  /** Chats this chat's agent started, newest first. */
+  subtasks?: AgentDockSubtask[];
+  /** The chat whose agent started this one; its tab shows this one. */
+  parentThreadId?: string;
   /** Shown when hovering the tab, such as who started a shared chat. */
   hint?: string;
   /** Shown in place of the chat icon on vertical tabs. */

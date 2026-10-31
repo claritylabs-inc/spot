@@ -1,5 +1,23 @@
 # Platform workflow QA
 
+## Operator subtasks and concurrent operators — October 30, 2026
+
+Native-local stack with the seeded operator and a synthetic second operator,
+driven through the real internal mutations, actions and runner (a temporary
+local-only module, since removed; copy in `.context/qa/subtasks/`). Screenshots
+in `.context/qa/subtasks/`.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Operator B's message into A's conversation while A's run is active is rejected with A's name; A's run keeps its state; B cannot stop it; A can | Passed locally | `03-held-by-other-operator.png` (Stop hidden, banner names the owner) |
+| Two default-conversation MCP tasks land in separate conversations; the first keeps running; retries with the same key return the same thread as duplicates | Passed locally | |
+| Manual approval with no intervening edit executes (no false stale); an edit to the record between proposal and approval fails with `target_changed` and writes nothing; the same input is reported once, then can be proposed again | Passed locally | |
+| `run_operator_tasks` starts two linked subtasks, a replay returns the same tasks, subtasks are not offered the task tools, `get_operator_tasks` waits until settled and a repeated identical call reads again | Passed locally | |
+| Subtask stopped by its parent posts no notice; a finished subtask the parent never read posts one notice when the parent finishes, none while it is active | Passed locally | |
+| Grouped dock tabs with per-subtask status; one-line rows under the starting reply (latest step shimmering, approval with Review, answer); clicking a row opens the subtask and keeps the group expanded | Passed locally | `10-parent-open.png`, `11-subtask-open.png` |
+| Another chat open: the parent's subtasks collapse to overlapping marks and "3 subtasks", which reopens the parent; another operator's running request replaces the composer | Passed locally | `12-collapsed-stack-and-held.png` |
+| A model-driven parent that decides to start subtasks and summarizes their answers | Blocked locally | cl-router rejects job callbacks to the sandbox's local backend (`job callback is not permitted`), so every local operator run fails before its first model step |
+
 ## One sidebar system — October 30, 2026
 
 Native-local stack, operator in headless Chrome at 1600px. The PDF opened from

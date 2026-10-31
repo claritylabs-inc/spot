@@ -93,6 +93,7 @@ function preflightFailure(
 ): OperatorToolFailedOutcome {
   const message = errorMessage(error);
   const terminal = terminalCode(error);
+  const noWriteCode = operatorNoWriteCode(error);
   const issues =
     error instanceof z.ZodError
       ? error.issues.slice(0, 10).map((issue) => ({
@@ -106,7 +107,7 @@ function preflightFailure(
     failure: {
       code:
         terminal ??
-        operatorNoWriteCode(error) ??
+        noWriteCode ??
         (issues
           ? "invalid_tool_input"
           : /stale|revision|version changed/i.test(message)
@@ -119,7 +120,9 @@ function preflightFailure(
       writeState: "not_started",
       guidance: terminal
         ? "Do not retry or work around this restriction. Report the blocked action and use the existing authorization or approval flow."
-        : `No write started. Correct ${toolName} using its schema and authoritative IDs. Search inputs accept one target unless batch syntax is explicitly supported; a rejected search is not evidence of absence.${confirmed ? " Changed input requires a fresh exact confirmation." : ""}`,
+        : noWriteCode === "target_changed"
+          ? `No write started. Someone else changed the record after ${toolName} was proposed. Read it again and tell the operator what changed; if the change is still needed, call ${toolName} again from the current state (the same input may be proposed again), which asks for a fresh exact confirmation.`
+          : `No write started. Correct ${toolName} using its schema and authoritative IDs. Search inputs accept one target unless batch syntax is explicitly supported; a rejected search is not evidence of absence.${confirmed ? " Changed input requires a fresh exact confirmation." : ""}`,
       ...(issues ? { issues } : {}),
     },
     error: message,
