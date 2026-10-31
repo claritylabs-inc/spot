@@ -1,7 +1,12 @@
 "use client";
 
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import {
+  useState,
+  type ComponentProps,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
@@ -364,11 +369,15 @@ export function ChatCopyButton({
   size = "compact",
   className,
   iconClassName = "size-3.5",
+  label = "Copy response",
+  icon: Icon = Copy,
 }: {
   content: string;
   size?: PillButtonSize;
   className?: string;
   iconClassName?: string;
+  label?: string;
+  icon?: ComponentType<{ className?: string }>;
 }) {
   const [copied, setCopied] = useState(false);
   if (!content.trim()) return null;
@@ -377,7 +386,7 @@ export function ChatCopyButton({
       type="button"
       variant="icon"
       size={size}
-      label={copied ? "Copied" : "Copy response"}
+      label={copied ? "Copied" : label}
       className={className}
       onClick={async () => {
         try {
@@ -392,7 +401,7 @@ export function ChatCopyButton({
       {copied ? (
         <Check className={cn(iconClassName, "text-emerald-500")} />
       ) : (
-        <Copy className={iconClassName} />
+        <Icon className={iconClassName} />
       )}
     </PillButton>
   );
