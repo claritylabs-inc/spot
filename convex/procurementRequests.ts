@@ -2816,6 +2816,10 @@ export const ingestEmailInternal = internalMutation({
     await ctx.scheduler.runAfter(0, internal.actions.teamEmailAttachments.classify, {
       messageId: emailMessageId,
     });
+    if (args.bodyHtml)
+      await ctx.scheduler.runAfter(0, internal.actions.teamEmailHtmlStyles.classify, {
+        messageId: emailMessageId,
+      });
     await ctx.db.patch(threadId, {
       participantEmails: classificationParticipants,
       latestMessageAt: Math.max(target.latestMessageAt, args.receivedAt),

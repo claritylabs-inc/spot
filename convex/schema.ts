@@ -3777,6 +3777,12 @@ export default defineSchema({
     sha256: v.string(),
     decorative: v.boolean(),
   }).index("by_fromEmail_and_sha256", ["fromEmail", "sha256"]),
+  /** Jev's HTML style verdicts by sender and markup signals, reused for that sender's same-shaped mail. */
+  teamEmailHtmlStyleJudgments: defineTable({
+    fromEmail: v.string(),
+    signals: v.string(),
+    style: v.union(v.literal("conversational"), v.literal("designed")),
+  }).index("by_fromEmail_and_signals", ["fromEmail", "signals"]),
   teamEmailThreads: defineTable({
     ownerUserId: v.optional(v.id("users")),
     source: v.union(v.literal("forward"), v.literal("outreach"), v.literal("team")),
@@ -3865,6 +3871,8 @@ export default defineSchema({
     }))),
     /** Jev's first line of quoted history when no known marker finds it; null when it has none. */
     quotedHistoryStart: v.optional(v.union(v.string(), v.null())),
+    /** Jev's verdict on whether `bodyHtml` is a person's message or a designed template, when its markup alone does not say. */
+    htmlStyle: v.optional(v.union(v.literal("conversational"), v.literal("designed"))),
     /** Image attachments (clientFileId or storageId) Jev judged to be signature or decoration, not shared files. */
     decorativeAttachmentIds: v.optional(v.array(v.string())),
     /** Filed attachments that are inline `cid:` parts of `bodyHtml`. */

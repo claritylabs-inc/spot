@@ -11,6 +11,7 @@ import {
 import { requireOperator } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { teamTargetProblem } from "./lib/teamEmailStore";
+import { emailHtmlStyle } from "../lib/email-html-style";
 import {
   getTeamThreadDetails,
   listSuggestedTeamThreads,
@@ -204,6 +205,7 @@ export const getMessageHtml = query({
     ]);
     return {
       html: message.bodyHtml,
+      style: emailHtmlStyle(message.bodyHtml, message.htmlStyle),
       inlineImages: inline.flatMap((file) =>
         file?.url ? [{ contentId: file.contentId, url: file.url }] : [],
       ),

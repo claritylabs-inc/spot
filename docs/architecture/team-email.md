@@ -79,6 +79,24 @@ not repeated as attachment chips. Image attachments the HTML does not show inlin
 proceed threshold are stored in `decorativeAttachmentIds` and hidden from the chips.
 Confident verdicts are remembered per sender and content hash (`teamEmailImageJudgments`), so a repeated signature is never judged again. Failures or uncertainty keep every attachment listed. Attachments are listed above the body.
 
+The reader styles each HTML body by kind (`lib/email-html-style.ts`, shared by the
+server and reader). Conversational mail (a person's message, reply or forward) takes
+the reader's font, size, colours and link colour in either theme, with the sender
+client's inline presentation removed, quotes and forwards shown flush with a thin
+rule, data tables (header cells, a drawn border, or a text grid) styled like the shared
+`Table` while signature and layout tables stay as sent, and the frame transparent so
+dark mode reads natively. Designed mail
+(newsletters, receipts, notifications) renders as sent on white paper. Markup settles
+most mail: client markers (Gmail, Apple Mail, Outlook, Thunderbird, Yahoo) or simple
+untabled HTML are conversational; unsubscribe/browser links, `@media`, layout tables
+and background images are designed. The rest gets one Jev request at ingest
+(`convex/actions/teamEmailHtmlStyles.ts`, task `team_email_html_style`) with three
+Nouls (written by a person, sent automatically, colours carry meaning) composed in
+code at the proceed threshold. The verdict is stored as `htmlStyle` and remembered
+per sender and markup signals (`teamEmailHtmlStyleJudgments`), so a sender's
+same-shaped mail is never judged again. Failures or uncertainty store nothing and
+the message renders as sent.
+
 The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
 tabs. Inbox contains conversations whose latest message is inbound; Sent contains
 those whose latest message is outbound, so a new reply returns a conversation to

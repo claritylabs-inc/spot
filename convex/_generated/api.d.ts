@@ -94,6 +94,7 @@ import type * as actions_submissionCoverage from "../actions/submissionCoverage.
 import type * as actions_teamEmailAttachments from "../actions/teamEmailAttachments.js";
 import type * as actions_teamEmailCompose from "../actions/teamEmailCompose.js";
 import type * as actions_teamEmailForwarding from "../actions/teamEmailForwarding.js";
+import type * as actions_teamEmailHtmlStyles from "../actions/teamEmailHtmlStyles.js";
 import type * as actions_teamEmailQuotes from "../actions/teamEmailQuotes.js";
 import type * as actions_teamEmailReplies from "../actions/teamEmailReplies.js";
 import type * as actions_teamInbox from "../actions/teamInbox.js";
@@ -647,6 +648,7 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as teamEmailAttachments from "../teamEmailAttachments.js";
 import type * as teamEmailCompose from "../teamEmailCompose.js";
 import type * as teamEmailForwarding from "../teamEmailForwarding.js";
+import type * as teamEmailHtmlStyles from "../teamEmailHtmlStyles.js";
 import type * as teamEmailQuotes from "../teamEmailQuotes.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
 import type * as teamInbox from "../teamInbox.js";
@@ -752,6 +754,7 @@ declare const fullApi: ApiFromModules<{
   "actions/teamEmailAttachments": typeof actions_teamEmailAttachments;
   "actions/teamEmailCompose": typeof actions_teamEmailCompose;
   "actions/teamEmailForwarding": typeof actions_teamEmailForwarding;
+  "actions/teamEmailHtmlStyles": typeof actions_teamEmailHtmlStyles;
   "actions/teamEmailQuotes": typeof actions_teamEmailQuotes;
   "actions/teamEmailReplies": typeof actions_teamEmailReplies;
   "actions/teamInbox": typeof actions_teamInbox;
@@ -1305,6 +1308,7 @@ declare const fullApi: ApiFromModules<{
   teamEmailAttachments: typeof teamEmailAttachments;
   teamEmailCompose: typeof teamEmailCompose;
   teamEmailForwarding: typeof teamEmailForwarding;
+  teamEmailHtmlStyles: typeof teamEmailHtmlStyles;
   teamEmailQuotes: typeof teamEmailQuotes;
   teamEmailReplies: typeof teamEmailReplies;
   teamInbox: typeof teamInbox;
