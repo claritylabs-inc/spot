@@ -4,7 +4,7 @@ import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { operatorBatchApprovalDetails } from "@/lib/operator-batch-approval";
 import { Fragment, useMemo, type ComponentProps, type ReactNode } from "react";
 import { useMutation } from "convex/react";
-import { RotateCcw } from "lucide-react";
+import { Link2, RotateCcw } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import {
   StatusTag,
@@ -137,8 +137,10 @@ function OperatorMessageFooter({
   confirmations,
   activeRun,
   renderConfirmation,
+  threadUrl,
 }: {
   message: OperatorAgentMessage;
+  threadUrl: string;
   confirmations: OperatorAgentConfirmation[];
   activeRun: boolean;
   renderConfirmation: RenderConfirmation;
@@ -170,6 +172,13 @@ function OperatorMessageFooter({
           content={message.content}
           size="small"
           className={controlClass}
+        />
+        <ChatCopyButton
+          content={threadUrl}
+          size="small"
+          className={controlClass}
+          label="Copy thread link"
+          icon={Link2}
         />
         {message.rerun ? (
           <PillButton
@@ -470,6 +479,9 @@ export function OperatorConversation({
 }) {
   const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
   const threadId = activeThreadId ?? "";
+  const threadUrl = activeThreadId
+    ? `${window.location.origin}/operator/threads/${encodeURIComponent(activeThreadId)}`
+    : "";
   useAutoOpenOperatorPdfs(threadId, detail.messages);
   const emailDraftsByMessage = useOperatorEmailDrafts(detail.messages);
   const [openEmailDraftId, setOpenEmailDraftId] = useFollowedState<
@@ -775,6 +787,7 @@ export function OperatorConversation({
                   confirmations={confirmations}
                   activeRun={detail.activeRun}
                   renderConfirmation={confirmationCard}
+                  threadUrl={threadUrl}
                 />
               ) : null}
               {groupOperatorConfirmations(
