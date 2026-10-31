@@ -26,7 +26,12 @@ import {
   AGENT_DOCK_TABS_MIN_WIDTH,
   clampAgentDockTabsWidth,
 } from "./dock-storage";
-import type { AgentDockAdapter, AgentDockPerson } from "./types";
+import type {
+  AgentDockAdapter,
+  AgentDockPerson,
+  AgentDockSubtask,
+} from "./types";
+import { SubtaskStack, SubtaskStatusGlyph } from "./agent-dock-subtasks";
 
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
 const TAB_ITEM_CLASS = cn(
@@ -58,10 +63,13 @@ function TabButton({
   closeShortcut,
   hint,
   creator,
+  icon,
   position,
   variant = "bar",
 }: {
   closeShortcut?: ShortcutKey[];
+  /** Leads the label in place of the creator, such as a subtask's status. */
+  icon?: ReactNode;
   /** Hover text beside the label, such as who started the chat. */
   hint?: string;
   /** Who started the chat; their avatar leads vertical tabs. */
@@ -124,7 +132,9 @@ function TabButton({
       >
         {rail ? (
           <span aria-hidden="true" className="relative flex">
-            {creator ? (
+            {icon ? (
+              icon
+            ) : creator ? (
               <Avatar
                 name={creator.name}
                 imageUrl={creator.avatarUrl}
@@ -146,7 +156,9 @@ function TabButton({
           </span>
         ) : (
           <>
-            {creator ? (
+            {icon ? (
+              icon
+            ) : creator ? (
               <Avatar
                 name={creator.name}
                 imageUrl={creator.avatarUrl}
@@ -219,7 +231,14 @@ function ThreadTab({
     }
   }, [markSeen, seenWhileVisible, summary, tab.seenAt, tab.threadId]);
 
-  return (
+  // A subtask whose parent chat is open shows inside the parent's group.
+  if (
+    summary?.parentThreadId &&
+    dock.tabs.some((item) => item.threadId === summary.parentThreadId)
+  )
+    return null;
+
+  const parentTab = (
     <TabButton
       active={active}
       label={summary?.title ?? "Chat"}
@@ -231,6 +250,96 @@ function ThreadTab({
       closeShortcut={active ? ["alt", "w"] : undefined}
       variant={variant}
     />
+  );
+  const subtasks = summary?.subtasks ?? [];
+  if (!subtasks.length) return parentTab;
+  const visible = open && dock.view === "chat";
+  return (
+    <SubtaskTabGroup
+      parentTab={parentTab}
+      subtasks={subtasks}
+      expanded={
+        visible &&
+        (active ||
+          subtasks.some((task) => task.threadId === dock.activeThreadId))
+      }
+      activeThreadId={visible ? dock.activeThreadId : null}
+      onOpen={(threadId) => dock.openThread(threadId)}
+      onOpenParent={() => dock.openThread(tab.threadId)}
+      variant={variant ?? "bar"}
+    />
+  );
+}
+
+/**
+ * A chat with subtasks: while it or one of its subtasks is open, each subtask
+ * is a tab beside it with its status; otherwise they collapse into a stack.
+ */
+function SubtaskTabGroup({
+  parentTab,
+  subtasks,
+  expanded,
+  activeThreadId,
+  onOpen,
+  onOpenParent,
+  variant,
+}: {
+  parentTab: ReactNode;
+  subtasks: AgentDockSubtask[];
+  expanded: boolean;
+  activeThreadId: string | null;
+  onOpen: (threadId: string) => void;
+  onOpenParent: () => void;
+  variant: TabVariant;
+}) {
+  const row = variant === "row";
+  const rail = variant === "rail";
+  // Oldest first, in the order they were started.
+  const ordered = [...subtasks].reverse();
+  const subtaskTabs = ordered.map((task) => (
+    <TabButton
+      key={task.threadId}
+      active={task.threadId === activeThreadId}
+      label={task.title}
+      icon={<SubtaskStatusGlyph status={task.status} />}
+      onSelect={() => onOpen(task.threadId)}
+      variant={variant}
+    />
+  ));
+  if (rail)
+    return (
+      <>
+        {parentTab}
+        {expanded ? subtaskTabs : null}
+      </>
+    );
+  if (!expanded)
+    return (
+      <div
+        role="presentation"
+        className={cn("flex shrink-0", row ? "w-full flex-col" : "items-center")}
+      >
+        {parentTab}
+        <SubtaskStack
+          subtasks={subtasks}
+          onSelect={onOpenParent}
+          className={row ? "ml-5 self-start" : undefined}
+        />
+      </div>
+    );
+  return (
+    <div
+      role="presentation"
+      className={cn(
+        "flex shrink-0 gap-0.5",
+        row
+          ? "w-full flex-col [&>*:not(:first-child)]:pl-4"
+          : "items-center rounded-full bg-foreground/[0.03] p-0.5 [&>*:not(:first-child)]:max-w-40",
+      )}
+    >
+      {parentTab}
+      {subtaskTabs}
+    </div>
   );
 }
 

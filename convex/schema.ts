@@ -5376,6 +5376,9 @@ export default defineSchema({
       ),
     ),
     lastMessageAt: v.number(),
+    // Set on a subtask conversation started by another operator run.
+    parentThreadId: v.optional(v.id("operatorAgentThreads")),
+    parentRunId: v.optional(v.id("operatorAgentRuns")),
     archivedAt: v.optional(v.number()),
     archiveState: v.optional(v.literal("archived")),
     createdAt: v.number(),
@@ -5784,6 +5787,11 @@ export default defineSchema({
     objective: v.string(),
     // OAuth client that started the run over MCP.
     mcpClientId: v.optional(v.string()),
+    // A subtask's starting run and conversation (run_operator_tasks), and
+    // when its outcome reached that conversation (a read or a notice).
+    parentRunId: v.optional(v.id("operatorAgentRuns")),
+    parentThreadId: v.optional(v.id("operatorAgentThreads")),
+    parentNotifiedAt: v.optional(v.number()),
     planRequested: v.optional(v.boolean()),
     /** Skills the operator invoked with `/name` for this turn. */
     requestedSkills: v.optional(v.array(v.string())),
@@ -5830,7 +5838,8 @@ export default defineSchema({
   })
     .index("thread_status", ["threadId", "status"])
     .index("operator_created", ["operatorUserId", "createdAt"])
-    .index("message", ["userMessageId"]),
+    .index("message", ["userMessageId"])
+    .index("parent_thread_created", ["parentThreadId", "createdAt"]),
 
   // Metadata-only timing, one row per runner segment, written by the
   // mutation that ends the segment; kept off the hot run document and swept
