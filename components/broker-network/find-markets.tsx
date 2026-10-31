@@ -20,6 +20,8 @@ import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { SuggestionSources } from "@/components/procurement/information/suggestion";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { usePageContextLayer } from "@/hooks/use-page-context";
+import { operatorContextSummary } from "@/components/operator-agent/operator-page-context";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -702,6 +704,22 @@ export function FindMarkets({
     discoveries?.[0] ??
     null;
   const active = discoveries?.some(isActive) ?? false;
+  // The AI panel works on the search the operator has open; a follower sees the
+  // leader's, so every teammate's panel agrees.
+  usePageContextLayer(
+    selected
+      ? {
+          pageType: "operator_broker_markets",
+          entityId: selected.discoveryId,
+          summary: operatorContextSummary(
+            `Find markets search: ${selected.criteria.lines.join(", ")} in ${selected.criteria.states.join(", ")}`,
+            selected.criteria.industry &&
+              `industry ${selected.criteria.industry}`,
+            `${selected.status}${selected.candidateCount !== undefined ? `, ${plural(selected.candidateCount, "candidate")}` : ""}`,
+          ),
+        }
+      : null,
+  );
 
   return (
     <div className="@container/markets space-y-6">

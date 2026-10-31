@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { Globe, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
+import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const MAX_CLIENTS = 50;
@@ -30,8 +31,15 @@ export function BulkProfileResearch({
   orgIds: Id<"organizations">[];
   disabled?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  // Followers see the confirmation the leader has open for the same selection.
+  const { open, onOpenChange: setOpen } = useFollowedOpen(
+    "clients:list:profile-research",
+  );
   const [busy, setBusy] = useState(false);
+  // Clearing the selection closes the confirmation instead of leaving it armed.
+  useEffect(() => {
+    if (!orgIds.length) setOpen(false);
+  }, [orgIds.length, setOpen]);
   const start = useMutation(api.clientProfileBatchResearch.start);
   const tooMany = orgIds.length > MAX_CLIENTS;
 

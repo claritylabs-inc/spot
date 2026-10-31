@@ -49,10 +49,13 @@ completion has been verified on all deployed targets.
 
 ## Production releases
 
-Vercel deploys Convex as part of the production build. `vercel.json` sets the
-build command to `npx convex deploy --typecheck=disable --cmd 'npm run build'`
-when `VERCEL_ENV=production` and to `npm run build` otherwise, so preview
-builds never touch production Convex. The Spot Vercel project's Production
+Vercel deploys Convex as part of the production build. `vercel.json` runs `scripts/vercel-build.sh` (the build command field is capped
+at 256 characters), which runs
+`npx convex deploy --typecheck=disable --cmd 'npm run build'` when
+`VERCEL_ENV=production`. Preview builds with a Preview-scoped
+`CONVEX_DEPLOY_KEY` run the same deploy against their own Convex preview
+deployment (see Preview deployments); without that key they run
+`npm run build`. Previews never touch production Convex. The Spot Vercel project's Production
 environment holds the production `CONVEX_DEPLOY_KEY`. `convex deploy` runs the
 Next.js build first, then pushes the Convex functions; a failure in either step
 fails the Vercel build and nothing is promoted. Neither step typechecks:
@@ -115,6 +118,42 @@ new top branch the `preview/` name and move the former top to `stack/`. Keep
 one preview branch for each stack. Do not add exact `false` rules for
 `preview/` branches: Vercel enables a branch when any matching rule is `true`,
 so `preview/**` still wins.
+
+### Preview deployments
+
+Adding the `preview` label to a same-repo PR runs `.github/workflows/preview.yml`,
+which force-pushes the PR head to `preview/pr-<number>`; removing the label or
+closing the PR deletes that branch. Each preview build deploys to its own Convex
+preview deployment (named for the branch) and runs
+`reviewerAccounts:provisionPreview`, which seeds the reviewer account.
+Convex deletes idle preview deployments automatically.
+`.github/workflows/preview-e2e.yml` runs `scripts/preview-e2e.mjs` when Vercel
+reports the deployment ready and comments the result on the PR. Pushes made with
+`GITHUB_TOKEN` are refused when the commit changes `.github/workflows/`; use a
+token with the `workflow` scope if that matters.
+
+One-time setup:
+
+- Vercel (Spot project, Preview environment only): `CONVEX_DEPLOY_KEY` set to
+  a Convex *preview* deploy key from the Convex dashboard (Project settings →
+  Preview Deploy Keys). Never reuse the production key.
+- Convex dashboard (Project settings → Default Environment Variables, Preview):
+  the variables a deployment needs to run (auth keys such as `JWT_PRIVATE_KEY`
+  and `JWKS`, `SITE_URL`, `EMAIL_CONNECTIONS_ENCRYPTION_KEY`, and the AI/email
+  provider keys the pages under test use), using non-production values, plus
+  `PREVIEW_E2E_PASSWORD`.
+- GitHub secrets: `PREVIEW_E2E_PASSWORD` (same value) and
+  `VERCEL_AUTOMATION_BYPASS_SECRET` (Vercel → Settings → Deployment Protection →
+  Protection Bypass for Automation).
+
+Conductor Cloud workspaces use the same bypass secret. Add
+`VERCEL_AUTOMATION_BYPASS_SECRET` to the Cloud Computer environment in the
+Conductor app (Settings → Cloud → Environment variables) so every cloud
+workspace sees it. A browser opens a protected preview once with
+`<preview-url>/?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET&x-vercel-set-bypass-cookie=true`
+(the cookie then covers later navigation); scripts send the
+`x-vercel-protection-bypass` header, as `scripts/preview-e2e.mjs` does. Never
+commit or print the value.
 
 CI runs on PRs regardless of their immediate base branch.
 New updates cancel superseded CI for the same PR or ref. Every PR still needs

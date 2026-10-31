@@ -12,6 +12,9 @@ export const EXPAND_TOOLS_NAME = "expand_tools";
 // Lookups needed to use another family's tools; never register unavailable tools.
 // Replies need the team inbox reads that left outbound_email for team_inbox.
 export const AGENT_TOOL_FAMILY_LOOKUPS: Record<string, readonly string[]> = {
+  // Request research (research_procurement_information) is awaited with the
+  // organizations family's status read.
+  procurement: ["get_research_status"],
   organizations: ["list_operators", "lookup_client_wiki"],
   outbound_email: [
     "list_client_files",
@@ -300,7 +303,8 @@ export function expandToolsSpec<Family extends string>(
       .transform((input, ctx) => {
         const requested = Object.values(input)
           .flatMap((value) => value ?? [])
-          .flatMap((name) => name.split(/[\s,]+/).filter(Boolean));
+          // Models sometimes pass a JSON array as one string: `["a", "b"]`.
+          .flatMap((name) => name.split(/[\s,[\]"'`]+/).filter(Boolean));
         const resolved = new Set<Family>();
         const tools = new Set<string>();
         for (const name of requested) {

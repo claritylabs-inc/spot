@@ -53,6 +53,7 @@ import {
   enforceInputLimits,
 } from "../lib/security";
 import {
+  researchProviderOf,
   toolOutcomeStatus,
   type MessageActivityUpdate,
 } from "../lib/messageActivity";
@@ -813,6 +814,9 @@ export const run = internalAction({
             const result = event.success
               ? summarizeToolResult(event.output)
               : undefined;
+            const researchProvider = event.success
+              ? researchProviderOf(event.output)
+              : undefined;
             return recordActivity({
               kind: "tool",
               toolCallId: event.toolCall.toolCallId,
@@ -821,6 +825,7 @@ export const run = internalAction({
                 ? toolOutcomeStatus(event.output)
                 : "failed",
               ...(result ? { result } : {}),
+              ...(researchProvider ? { researchProvider } : {}),
             });
           },
           onStepFinish: async (step) => {

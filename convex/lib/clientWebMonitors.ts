@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ClRouterMonitorField } from "./clRouterClient";
 import { publicResearchUrl } from "./companyResearch";
+import { NoWriteInputError } from "./noWriteInputError";
 
 export const CLIENT_WEB_MONITOR_CALLBACK_PATH = "/router-monitors/events";
 export const CLIENT_WEB_MONITOR_BODY_BYTES = 256 * 1024;
@@ -66,6 +67,15 @@ export function isClientWebMonitorFrequency(value: string) {
   if (!match) return false;
   const hours = Number(match[1]) * FREQUENCY_HOURS[match[2] as "h" | "d" | "w"];
   return hours >= 1 && hours <= 30 * 24;
+}
+
+/** Rejects an out-of-range frequency before anything is written or approved. */
+export function assertClientWebMonitorFrequency(value: string) {
+  if (!isClientWebMonitorFrequency(value))
+    throw new NoWriteInputError(
+      "invalid_frequency",
+      "Frequency must be between 1h and 30d, such as 6h, 1d or 1w.",
+    );
 }
 
 export function clientWebMonitorPublicWebsite(website: string | undefined) {

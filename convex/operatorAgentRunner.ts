@@ -41,6 +41,7 @@ import { collectToolAudit, mergeToolAudits } from "./lib/agentToolAudit";
 import { summarizeToolResult } from "./lib/toolResultSummary";
 import { toolResultPreview } from "./lib/toolResultPreview";
 import {
+  researchProviderOf,
   toolOutcomeStatus,
   type MessageActivityUpdate,
   toolActivityTarget,
@@ -1440,10 +1441,12 @@ export const run = internalAction({
                         },
                       )
                       .catch(() => false));
+                  const researchProvider = researchProviderOf(output);
                   await recordActivity({
                     ...activity,
                     status,
                     ...(result ? { result } : {}),
+                    ...(researchProvider ? { researchProvider } : {}),
                     ...(change ? { change } : {}),
                     ...(preview ? { preview: true } : {}),
                   });

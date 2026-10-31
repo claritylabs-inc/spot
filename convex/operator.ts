@@ -299,6 +299,10 @@ async function listOperatorClientRows(ctx: QueryCtx) {
         adminEmail: admin?.email,
         adminPhone: admin?.phone,
         applicationInProgress: inProgress.has(client._id),
+        // Public research is queued or running; every operator sees it live.
+        researching:
+          client.companyResearch?.status === "pending" ||
+          client.companyResearch?.status === "running",
         createdAt: client._creationTime,
       };
     }),
