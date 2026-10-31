@@ -62,6 +62,22 @@ const activityTimingFields = {
   endedAt: v.optional(v.number()),
 };
 
+const researchProviderValidator = v.union(
+  v.literal("parallel"),
+  v.literal("exa"),
+);
+
+/** The web research provider a tool result reports answering it, if any. */
+export function researchProviderOf(
+  output: unknown,
+): "parallel" | "exa" | undefined {
+  if (!output || typeof output !== "object") return undefined;
+  const value = "provider" in output ? output.provider : undefined;
+  if (value === "parallel" || value === "exa") return value;
+  // Rich tool executors wrap the retrieval result as `{ result }`.
+  return "result" in output ? researchProviderOf(output.result) : undefined;
+}
+
 export const messageActivityValidator = v.object({
   phase: v.union(v.literal("model"), v.literal("tools")),
   tools: v.array(
@@ -72,6 +88,8 @@ export const messageActivityValidator = v.object({
       context: v.optional(toolContextValidator),
       /** Count summary of a settled call ("3 threads"); see toolResultSummary. */
       result: v.optional(v.string()),
+      /** Web research provider that answered a settled call. */
+      researchProvider: v.optional(researchProviderValidator),
       target: v.optional(toolTargetValidator),
       /** Operator-only: what a completed write did, names not ids. */
       change: v.optional(v.string()),
@@ -113,6 +131,7 @@ export const messageActivityUpdateValidator = v.union(
     status: messageActivityToolStatusValidator,
     context: v.optional(toolContextValidator),
     result: v.optional(v.string()),
+    researchProvider: v.optional(researchProviderValidator),
     target: v.optional(toolTargetValidator),
     change: v.optional(v.string()),
     preview: v.optional(v.boolean()),
@@ -272,6 +291,10 @@ export function applyMessageActivity(
       TOOL_RESULT_SUMMARY_PATTERN.test(update.result)
         ? { result: update.result }
         : {};
+    const researchProvider =
+      update.researchProvider && SETTLED.has(update.status)
+        ? { researchProvider: update.researchProvider }
+        : {};
     const change =
       update.change?.trim() &&
       update.status === "completed" &&
@@ -289,6 +312,7 @@ export function applyMessageActivity(
         status: update.status,
         ...(context ? { context } : {}),
         ...result,
+        ...researchProvider,
         ...target,
         ...change,
         ...(update.preview && SETTLED.has(update.status)
@@ -308,6 +332,7 @@ export function applyMessageActivity(
         status: update.status,
         ...(context ? { context } : {}),
         ...result,
+        ...researchProvider,
         ...target,
         ...change,
         ...(update.preview && SETTLED.has(update.status)
