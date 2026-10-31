@@ -26,7 +26,12 @@ import {
   AGENT_DOCK_TABS_MIN_WIDTH,
   clampAgentDockTabsWidth,
 } from "./dock-storage";
-import type { AgentDockAdapter, AgentDockPerson } from "./types";
+import type {
+  AgentDockAdapter,
+  AgentDockPerson,
+  AgentDockSubtask,
+} from "./types";
+import { SubtaskStack, SubtaskStatusGlyph } from "./agent-dock-subtasks";
 
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
 const TAB_ITEM_CLASS = cn(
@@ -58,10 +63,16 @@ function TabButton({
   closeShortcut,
   hint,
   creator,
+  icon,
+  compact = false,
   position,
   variant = "bar",
 }: {
   closeShortcut?: ShortcutKey[];
+  /** A smaller bar tab inside a subtask group. */
+  compact?: boolean;
+  /** Leads the label in place of the creator, such as a subtask's status. */
+  icon?: ReactNode;
   /** Hover text beside the label, such as who started the chat. */
   hint?: string;
   /** Who started the chat; their avatar leads vertical tabs. */
@@ -88,7 +99,7 @@ function TabButton({
       role="presentation"
       className={cn(
         "group/tab relative flex shrink-0 items-center",
-        variant === "bar" && "h-7 max-w-52",
+        variant === "bar" && (compact ? "h-6 max-w-44" : "h-7 max-w-52"),
         variant === "row" && "h-8 w-full",
         rail && "size-8",
       )}
@@ -117,6 +128,10 @@ function TabButton({
             : rail
               ? RAIL_ITEM_CLASS
               : ROW_ITEM_CLASS,
+          // A leading avatar or mark sits concentric with the rounded end.
+          variant === "bar" &&
+            compact &&
+            cn("gap-1.5 px-2.5", icon ? "pl-[5px]" : creator && "pl-1"),
           active
             ? "text-foreground"
             : "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
@@ -124,7 +139,9 @@ function TabButton({
       >
         {rail ? (
           <span aria-hidden="true" className="relative flex">
-            {creator ? (
+            {icon ? (
+              icon
+            ) : creator ? (
               <Avatar
                 name={creator.name}
                 imageUrl={creator.avatarUrl}
@@ -146,7 +163,9 @@ function TabButton({
           </span>
         ) : (
           <>
-            {creator ? (
+            {icon ? (
+              icon
+            ) : creator ? (
               <Avatar
                 name={creator.name}
                 imageUrl={creator.avatarUrl}
@@ -219,7 +238,14 @@ function ThreadTab({
     }
   }, [markSeen, seenWhileVisible, summary, tab.seenAt, tab.threadId]);
 
-  return (
+  // A subtask whose parent chat is open shows inside the parent's group.
+  if (
+    summary?.parentThreadId &&
+    dock.tabs.some((item) => item.threadId === summary.parentThreadId)
+  )
+    return null;
+
+  const parentTab = (compact = false) => (
     <TabButton
       active={active}
       label={summary?.title ?? "Chat"}
@@ -230,7 +256,99 @@ function ThreadTab({
       onClose={() => closeTab(tab.threadId)}
       closeShortcut={active ? ["alt", "w"] : undefined}
       variant={variant}
+      compact={compact}
     />
+  );
+  const subtasks = summary?.subtasks ?? [];
+  if (!subtasks.length) return parentTab();
+  const visible = open && dock.view === "chat";
+  const expanded =
+    visible &&
+    (active || subtasks.some((task) => task.threadId === dock.activeThreadId));
+  return (
+    <SubtaskTabGroup
+      parentTab={parentTab(expanded && (variant ?? "bar") === "bar")}
+      subtasks={subtasks}
+      expanded={expanded}
+      activeThreadId={visible ? dock.activeThreadId : null}
+      onOpen={(threadId) => dock.openThread(threadId)}
+      onOpenParent={() => dock.openThread(tab.threadId)}
+      variant={variant ?? "bar"}
+    />
+  );
+}
+
+/**
+ * A chat with subtasks: while it or one of its subtasks is open, each subtask
+ * is a tab beside it with its status; otherwise they collapse into a stack.
+ */
+function SubtaskTabGroup({
+  parentTab,
+  subtasks,
+  expanded,
+  activeThreadId,
+  onOpen,
+  onOpenParent,
+  variant,
+}: {
+  parentTab: ReactNode;
+  subtasks: AgentDockSubtask[];
+  expanded: boolean;
+  activeThreadId: string | null;
+  onOpen: (threadId: string) => void;
+  onOpenParent: () => void;
+  variant: TabVariant;
+}) {
+  const row = variant === "row";
+  const rail = variant === "rail";
+  // Oldest first, in the order they were started.
+  const ordered = [...subtasks].reverse();
+  const subtaskTabs = ordered.map((task) => (
+    <TabButton
+      key={task.threadId}
+      active={task.threadId === activeThreadId}
+      label={task.title}
+      icon={<SubtaskStatusGlyph status={task.status} />}
+      onSelect={() => onOpen(task.threadId)}
+      variant={variant}
+      compact
+    />
+  ));
+  if (rail)
+    return (
+      <>
+        {parentTab}
+        {expanded ? subtaskTabs : null}
+      </>
+    );
+  if (!expanded)
+    return (
+      <div
+        role="presentation"
+        className={cn("flex shrink-0", row ? "w-full flex-col" : "items-center")}
+      >
+        {parentTab}
+        <SubtaskStack
+          subtasks={subtasks}
+          onSelect={onOpenParent}
+          // Tucked into the parent tab's end padding so it reads as part of it.
+          className={row ? "ml-5 self-start" : "-ml-2.5"}
+        />
+      </div>
+    );
+  return (
+    <div
+      role="presentation"
+      className={cn(
+        "flex shrink-0 gap-0.5",
+        row
+          ? "w-full flex-col [&>*:not(:first-child)]:pl-4"
+          : "items-center rounded-full bg-foreground/[0.03] p-0.5",
+      )}
+    >
+      {parentTab}
+      {subtaskTabs}
+    </div>
   );
 }
 

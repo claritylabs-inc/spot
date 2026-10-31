@@ -28,6 +28,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Configuration | `Settings2` | `set_client_feature_flag`, `set_client_feature_flags`, `invite_operator`, `list_operators` |
 | Archive | `Archive` | `archive_procurement_proposal`, `archive_procurement_proposals` |
 | Deletion | `Trash2` | `clear_all_agent_memory`, `cancel_email_draft`, `cancel_email_drafts` |
+| Subtasks | `Workflow` | `run_operator_tasks`, `get_operator_tasks`, `cancel_operator_tasks` |
 | Skills | `BookOpenText` | `load_skill`, `read_skill_file` |
 
 Configured MCP calls use `McpToolActivityIcon` and the server's `OrgBrandIcon`

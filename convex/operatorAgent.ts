@@ -148,10 +148,26 @@ import {
   parseOperatorAgentToolInput,
   operatorUpdateFieldLabel,
   operatorUpdateValue,
+  MAX_ACTIVE_OPERATOR_TASKS,
+  MAX_OPERATOR_TASK_READS,
+  OPERATOR_TASK_ANSWER_BUDGET,
+  OPERATOR_TASK_ANSWER_CHARS,
+  OPERATOR_TASK_TOOL_NAMES,
   type OperatorAgentToolName,
   type OperatorToolIntegration,
   type OperatorToolRole,
 } from "./lib/operatorAgentToolRegistry";
+import {
+  activeOperatorRuns,
+  afterOperatorRunFinished,
+  assertNoOtherOperatorRun,
+  operatorTaskSettled,
+} from "./lib/operatorTasks";
+import {
+  assertOperatorTargetVersionsCurrent,
+  captureOperatorTargetVersions,
+} from "./lib/operatorTargetVersions";
+import { sanitizeOperatorReply } from "./lib/operatorToolOutput";
 import type { OperatorGoogleWorkspaceToolName } from "./lib/googleWorkspace";
 import {
   listOperatorAgentIntents,
@@ -1199,6 +1215,8 @@ function alreadyRunningExtraction(policyId: Id<"policies">) {
 
 const CLIENT_FILE_SCAN_LIMIT = 1_000;
 const RESEARCH_POLL_MS = 3_000;
+const OPERATOR_TASK_POLL_MS = 2_000;
+const OPERATOR_TASK_STEP_NAMES = 8;
 
 /** Offset into the sorted match list of one bounded policy scan. */
 function listCursorOffset(value: unknown) {
@@ -1561,6 +1579,8 @@ async function insertOperatorThread(
     };
     conversationKey?: string;
     visibility?: "private" | "shared";
+    parentThreadId?: Id<"operatorAgentThreads">;
+    parentRunId?: Id<"operatorAgentRuns">;
   },
 ) {
   const now = dayjs().valueOf();
@@ -1573,6 +1593,8 @@ async function insertOperatorThread(
     lastMessageAt: now,
     channel: args.channel,
     initialContext,
+    parentThreadId: args.parentThreadId,
+    parentRunId: args.parentRunId,
     createdAt: now,
     updatedAt: now,
   });
@@ -1644,8 +1666,89 @@ export async function cancelActiveRunsForThread(
           ctx.db.patch(ledger._id, { status: "cancelled", updatedAt: now }),
         ),
     );
+    if (run.parentThreadId) await afterOperatorRunFinished(ctx, run);
   }
   return runs.length;
+}
+
+/**
+ * Stops the subtasks the given runs started, with their pending approvals,
+ * when the operator stops the parent. A superseded parent keeps them running.
+ */
+async function cancelSubtasksOfRuns(
+  ctx: MutationCtx,
+  parentThreadId: Id<"operatorAgentThreads">,
+  parentRunIds: ReadonlySet<Id<"operatorAgentRuns">>,
+  reason: string,
+) {
+  if (!parentRunIds.size) return 0;
+  const tasks = await ctx.db
+    .query("operatorAgentRuns")
+    .withIndex("parent_thread_created", (q) =>
+      q.eq("parentThreadId", parentThreadId),
+    )
+    .order("desc")
+    .take(100);
+  let cancelled = 0;
+  for (const task of tasks) {
+    if (
+      !task.parentRunId ||
+      !parentRunIds.has(task.parentRunId) ||
+      !ACTIVE_RUN_STATUSES.has(task.status)
+    )
+      continue;
+    // The operator stopped them, so no notice reports it back.
+    await ctx.db.patch(task._id, { parentNotifiedAt: dayjs().valueOf() });
+    cancelled += await cancelActiveRunsForThread(
+      ctx,
+      task.threadId,
+      reason,
+      task._id,
+    );
+    await invalidatePendingOperatorConfirmations(ctx, task.threadId, reason);
+  }
+  return cancelled;
+}
+
+/** Explicit stop of a conversation's work by the operator who started it. */
+async function cancelOwnRunsForThread(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    threadId: Id<"operatorAgentThreads">;
+    runId?: Id<"operatorAgentRuns">;
+  },
+) {
+  await assertNoOtherOperatorRun(
+    ctx,
+    args.threadId,
+    args.operatorUserId,
+    "cancel",
+  );
+  const stopping = new Set(
+    (await activeOperatorRuns(ctx, args.threadId))
+      .filter((run) => !args.runId || run._id === args.runId)
+      .map((run) => run._id),
+  );
+  const cancelled = await cancelActiveRunsForThread(
+    ctx,
+    args.threadId,
+    "cancelled_by_operator",
+    args.runId,
+  );
+  await invalidatePendingOperatorConfirmations(
+    ctx,
+    args.threadId,
+    "cancelled_by_operator",
+  );
+  const subtasks = await cancelSubtasksOfRuns(
+    ctx,
+    args.threadId,
+    stopping,
+    "cancelled_by_operator",
+  );
+  await afterOperatorRunFinished(ctx, { threadId: args.threadId });
+  return { cancelled: cancelled > 0, cancelledSubtasks: subtasks };
 }
 
 async function invalidatePendingOperatorConfirmations(
@@ -1699,6 +1802,9 @@ export async function enqueueOperatorMessage(
     /** Skills invoked with `/name`, already validated as loadable. */
     requestedSkills?: string[];
     mcpClientId?: string;
+    /** The run that started this subtask (run_operator_tasks). */
+    parentRunId?: Id<"operatorAgentRuns">;
+    parentThreadId?: Id<"operatorAgentThreads">;
   },
 ) {
   const thread = await requireOperatorThread(
@@ -1809,12 +1915,20 @@ export async function enqueueOperatorMessage(
           .first()
       : null;
   if (!continuedRun) {
+    await assertNoOtherOperatorRun(
+      ctx,
+      args.threadId,
+      args.operatorUserId,
+      "message",
+    );
     await cancelActiveRunsForThread(ctx, args.threadId, "superseded");
     await invalidatePendingOperatorConfirmations(
       ctx,
       args.threadId,
       "superseded",
     );
+    // Finished subtasks the superseded run never read become history first.
+    await afterOperatorRunFinished(ctx, { threadId: args.threadId });
   }
 
   const now = dayjs().valueOf();
@@ -1889,6 +2003,12 @@ export async function enqueueOperatorMessage(
     executionKind: "goal",
     objective: content,
     mcpClientId: args.mcpClientId,
+    // The owner's later turns in a subtask conversation stay its subtask.
+    ...(args.parentThreadId
+      ? { parentRunId: args.parentRunId, parentThreadId: args.parentThreadId }
+      : thread.parentThreadId && thread.ownerUserId === args.operatorUserId
+        ? { parentRunId: thread.parentRunId, parentThreadId: thread.parentThreadId }
+        : {}),
     ...(args.channel === "email" && args.emailReadOnly ? { emailReadOnly: true } : {}),
     status: "queued",
     ...(args.planRequested ? { planRequested: true } : {}),
@@ -2044,8 +2164,155 @@ async function executeToolDomain(ctx: MutationCtx, args: OperatorToolDomainArgs)
   return executeToolDomainSingle(ctx, { ...args, toolName, input });
 }
 
+/** A subtask conversation started from this conversation, by exact ID. */
+async function requireOperatorSubtaskThread(
+  ctx: MutationCtx,
+  parentThreadId: Id<"operatorAgentThreads">,
+  value: unknown,
+) {
+  const threadId =
+    typeof value === "string"
+      ? ctx.db.normalizeId("operatorAgentThreads", value.trim())
+      : null;
+  const thread = threadId ? await ctx.db.get(threadId) : null;
+  if (!thread || thread.parentThreadId !== parentThreadId)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "operatorThreadId must be a subtask conversation of this conversation, from run_operator_tasks or get_operator_tasks. Omit it to start a new subtask.",
+    );
+  return thread;
+}
+
+async function runOperatorTasks(ctx: MutationCtx, args: OperatorToolDomainArgs) {
+  const run = args.runId ? await ctx.db.get(args.runId) : null;
+  if (!run || run.executionKind === "direct_tool")
+    throw new NoWriteInputError(
+      "not_applicable",
+      "Subtasks start only from an operator agent run.",
+    );
+  if (run.parentRunId)
+    throw new NoWriteInputError(
+      "subtask_depth",
+      "A subtask cannot start subtasks. Do the work in this run and report what remains.",
+    );
+  const items = OPERATOR_AGENT_TOOL_REGISTRY.run_operator_tasks.inputSchema.parse(
+    args.input,
+  ).items;
+  // Validate every item before any write.
+  const continued = await Promise.all(
+    items.map((item) =>
+      item.operatorThreadId
+        ? requireOperatorSubtaskThread(ctx, args.threadId, item.operatorThreadId)
+        : null,
+    ),
+  );
+  const continuedIds = continued.flatMap((thread) => (thread ? [thread._id] : []));
+  if (new Set(continuedIds).size !== continuedIds.length)
+    throw new NoWriteInputError(
+      "duplicate_target",
+      "Each operatorThreadId may appear once per call; combine the follow-ups into one objective.",
+    );
+  const activeTasks = (
+    await ctx.db
+      .query("operatorAgentRuns")
+      .withIndex("parent_thread_created", (q) =>
+        q.eq("parentThreadId", args.threadId),
+      )
+      .order("desc")
+      .take(100)
+  ).filter(
+    (task) =>
+      ACTIVE_RUN_STATUSES.has(task.status) &&
+      !continuedIds.includes(task.threadId),
+  );
+  if (activeTasks.length + items.length > MAX_ACTIVE_OPERATOR_TASKS)
+    throw new NoWriteInputError(
+      "too_many_subtasks",
+      `This conversation already has ${activeTasks.length} active subtask${activeTasks.length === 1 ? "" : "s"}; at most ${MAX_ACTIVE_OPERATOR_TASKS} run at once. Wait for some with get_operator_tasks or stop them with cancel_operator_tasks.`,
+    );
+  const tasks = [];
+  for (const [index, item] of items.entries()) {
+    const existing = continued[index];
+    const threadId =
+      existing?._id ??
+      (await insertOperatorThread(ctx, {
+        operatorUserId: args.operatorUserId,
+        channel: "chat",
+        title: item.title,
+        parentThreadId: args.threadId,
+        parentRunId: run._id,
+      }));
+    const queued = await enqueueOperatorMessage(ctx, {
+      operatorUserId: args.operatorUserId,
+      threadId,
+      channel: "chat",
+      content: item.objective,
+      parentRunId: run._id,
+      parentThreadId: args.threadId,
+      toolArtifacts: [
+        { type: "operator_subtask_objective", data: { parentRunId: run._id } },
+      ],
+    });
+    if (existing && existing.parentRunId !== run._id)
+      await ctx.db.patch(threadId, { parentRunId: run._id });
+    tasks.push({
+      runId: queued.runId,
+      operatorThreadId: threadId,
+      title: existing?.title ?? item.title ?? null,
+      status: "queued" as const,
+      followUp: Boolean(existing),
+    });
+  }
+  return {
+    tasks,
+    next: "Subtasks run in parallel. Watch them with get_operator_tasks (waitSeconds up to 60) and report each outcome from its final answer; queued or running is not done.",
+  };
+}
+
+async function cancelOperatorTasks(ctx: MutationCtx, args: OperatorToolDomainArgs) {
+  const { runIds } = OPERATOR_AGENT_TOOL_REGISTRY.cancel_operator_tasks.inputSchema.parse(
+    args.input,
+  );
+  const tasks = await Promise.all(
+    [...new Set(runIds)].map(async (value) => {
+      const runId = ctx.db.normalizeId("operatorAgentRuns", value.trim());
+      const task = runId ? await ctx.db.get(runId) : null;
+      if (!task || task.parentThreadId !== args.threadId)
+        throw new NoWriteInputError(
+          "invalid_identifier",
+          `${value} is not a subtask of this conversation. Use runIds from run_operator_tasks or get_operator_tasks.`,
+        );
+      return task;
+    }),
+  );
+  const results = [];
+  for (const task of tasks) {
+    if (!ACTIVE_RUN_STATUSES.has(task.status)) {
+      results.push({ runId: task._id, status: "already_finished", runStatus: task.status });
+      continue;
+    }
+    // This run stopped it and gets the result here, so no notice repeats it.
+    await ctx.db.patch(task._id, { parentNotifiedAt: dayjs().valueOf() });
+    await cancelActiveRunsForThread(
+      ctx,
+      task.threadId,
+      "cancelled_by_parent",
+      task._id,
+    );
+    await invalidatePendingOperatorConfirmations(
+      ctx,
+      task.threadId,
+      "cancelled_by_parent",
+    );
+    results.push({ runId: task._id, status: "cancelled" });
+  }
+  return { results };
+}
+
 async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomainArgs) {
   const { toolName, input } = args;
+  if (toolName === "run_operator_tasks") return runOperatorTasks(ctx, args);
+  if (toolName === "cancel_operator_tasks") return cancelOperatorTasks(ctx, args);
   if (toolName === "compact_context") {
     const run = args.runId ? await ctx.db.get(args.runId) : null;
     return run?.executionKind === "direct_tool"
@@ -4712,6 +4979,45 @@ async function executeToolActionDomain(
     }
   }
 
+  if (args.toolName === "get_operator_tasks") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_operator_tasks.inputSchema.parse(args.input);
+    const startedAt = dayjs().valueOf();
+    const deadline = startedAt + (parsed.waitSeconds ?? 0) * 1_000;
+    let initiallySettled: Set<string> | undefined;
+    for (;;) {
+      const view = await ctx.runQuery(internal.operatorAgent.operatorTasksInternal, {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        runIds: parsed.runIds,
+      });
+      const settledIds = view.tasks
+        .filter((task) => task.settled)
+        .map((task) => String(task.runId));
+      initiallySettled ??= new Set(settledIds);
+      const now = dayjs().valueOf();
+      const done =
+        view.settled ||
+        (parsed.waitFor === "any" &&
+          settledIds.some((id) => !initiallySettled!.has(id)));
+      if (done || now >= deadline || view.tasks.length === 0) {
+        const read = view.tasks
+          .filter((task) => task.subtask && task.finished)
+          .map((task) => task.runId);
+        if (read.length)
+          await ctx.runMutation(internal.operatorAgent.markOperatorTasksReadInternal, {
+            parentThreadId: args.threadId,
+            runIds: read,
+          });
+        return {
+          result: { ...view, waitedSeconds: Math.round((now - startedAt) / 1_000) },
+        };
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(OPERATOR_TASK_POLL_MS, deadline - now)),
+      );
+    }
+  }
+
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
     return await ctx.runAction(internal.actions.operatorMcp.run, {
       operatorUserId: args.operatorUserId,
@@ -5132,13 +5438,10 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
       throw new Error("Idempotency key was already used for another action");
     }
     if (existing.status === "succeeded") {
-      if (
-        args.toolName === "list_operator_conversations" ||
-        args.toolName === "read_operator_conversation"
-      ) {
+      if (spec.live) {
         const result = await executeToolDomain(ctx, {
           ...args,
-          toolName: args.toolName,
+          toolName: args.toolName as OperatorAgentToolName,
           input,
         });
         return { status: "succeeded" as const, result, idempotent: true };
@@ -5545,10 +5848,78 @@ export const getThread = query({
     const people = await operatorPeople(ctx, [
       thread.ownerUserId,
       ...messages.flatMap((message) => (message.userId ? [message.userId] : [])),
+      ...(activeRun ? [activeRun.operatorUserId] : []),
     ]);
     const entities = await activityEntities(ctx, messages);
+    const parentThread = thread.parentThreadId
+      ? await ctx.db.get(thread.parentThreadId)
+      : null;
+    // This conversation's subtasks, by each subtask conversation's latest run.
+    const subtaskRuns = await ctx.db
+      .query("operatorAgentRuns")
+      .withIndex("parent_thread_created", (q) =>
+        q.eq("parentThreadId", args.threadId),
+      )
+      .order("desc")
+      .take(50);
+    const latestSubtaskRuns = [
+      ...new Map(
+        subtaskRuns.reverse().map((run) => [String(run.threadId), run]),
+      ).values(),
+    ].reverse();
+    const subtasks = await Promise.all(
+      latestSubtaskRuns.slice(0, 25).map(async (run) => {
+        const [subtaskThread, response, parentRun, pending] = await Promise.all([
+          ctx.db.get(run.threadId),
+          ctx.db.get(run.agentMessageId),
+          run.parentRunId ? ctx.db.get(run.parentRunId) : null,
+          run.status === "waiting_confirmation" && run.checkpoint?.pendingConfirmationId
+            ? ctx.db.get(run.checkpoint.pendingConfirmationId)
+            : null,
+        ]);
+        const latestTool = response?.activity?.tools.at(-1);
+        const answer = ACTIVE_RUN_STATUSES.has(run.status)
+          ? undefined
+          : sanitizeOperatorReply(response?.content ?? "")
+              .split("\n")
+              // Plain text: no heading, quote or list markers, emphasis or code ticks.
+              .map((line) =>
+                line.replace(/^[\s#>*-]+/, "").replace(/\*\*|__|`/g, "").trim(),
+              )
+              .find(Boolean)
+              ?.slice(0, 200);
+        return {
+          threadId: run.threadId,
+          runId: run._id,
+          // The reply whose run started this subtask, where its row is shown.
+          messageId:
+            parentRun?.threadId === args.threadId
+              ? parentRun.agentMessageId
+              : undefined,
+          title: subtaskThread?.title ?? "Subtask",
+          status: run.status,
+          ...(latestTool
+            ? {
+                latestTool: {
+                  toolName: latestTool.toolName,
+                  status: latestTool.status,
+                  label: latestTool.context?.label,
+                },
+              }
+            : {}),
+          ...(pending?.status === "pending"
+            ? { approval: pending.payload.summary }
+            : {}),
+          ...(answer ? { answer } : {}),
+        };
+      }),
+    );
     return {
       thread: { ...thread, initialContext, pageContext: pageContext ?? null },
+      parent: parentThread
+        ? { threadId: parentThread._id, title: parentThread.title }
+        : null,
+      subtasks,
       entities,
       viewerUserId: operator.userId,
       creator: people.get(thread.ownerUserId)!,
@@ -5566,6 +5937,12 @@ export const getThread = query({
             return {
               ...visible,
               ...(presentation ? { presentation } : {}),
+              // The objective a parent run gave this subtask, not the operator's words.
+              ...(message.toolArtifacts?.some(
+                (artifact) => artifact.type === "operator_subtask_objective",
+              )
+                ? { fromParentTask: true }
+                : {}),
               rerun: rerunnableRuns.get(message._id),
               toolCalls: message.toolCalls?.map((call) => ({
                 ...call,
@@ -5993,17 +6370,10 @@ export const cancelRun = mutation({
     await requireOperatorThread(ctx, args.threadId, operator.userId, {
       anyOperator: true,
     });
-    const cancelled = await cancelActiveRunsForThread(
-      ctx,
-      args.threadId,
-      "cancelled_by_operator",
-    );
-    await invalidatePendingOperatorConfirmations(
-      ctx,
-      args.threadId,
-      "cancelled_by_operator",
-    );
-    return { cancelled: cancelled > 0 };
+    return cancelOwnRunsForThread(ctx, {
+      operatorUserId: operator.userId,
+      threadId: args.threadId,
+    });
   },
 });
 
@@ -6091,6 +6461,7 @@ async function confirmOperatorAction(
       completedAt: now,
       updatedAt: now,
     });
+    await afterOperatorRunFinished(ctx, run);
     const content = `Cancelled: ${payload.summary}.`;
     await ctx.db.insert("operatorAgentMessages", {
       threadId: args.threadId,
@@ -6174,6 +6545,7 @@ async function confirmOperatorAction(
       lastError: succeeded ? undefined : result.error,
       updatedAt: now,
     });
+    await afterOperatorRunFinished(ctx, run);
     const content = succeeded
       ? `Completed: ${payload.summary}.`
       : `Could not complete ${payload.summary}: ${result.error}`;
@@ -6217,6 +6589,7 @@ async function confirmOperatorAction(
     ) {
       throw new Error("Operator tool changed before confirmed execution");
     }
+    await assertOperatorTargetVersionsCurrent(ctx, payload.targetVersions);
     await preflightOperatorToolConfirmation(ctx, {
       operatorUserId: operator.userId,
       threadId: args.threadId,
@@ -6991,6 +7364,102 @@ export const enqueueMessageInternal = internalMutation({
   },
 });
 
+/**
+ * Without a thread or conversation key, an MCP task joins the token's default
+ * conversation unless a run is already working there; then it starts its own
+ * conversation, keyed by the call's dedupe key so a retry lands in the same
+ * place. Parallel MCP callers never supersede each other's work.
+ */
+async function defaultMcpTaskThread(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    defaultConversationKey: string;
+    dedupeKey: string;
+  },
+) {
+  const title = "External operator agent";
+  const ownKey = `${args.defaultConversationKey}:${(
+    await actionConfirmationFingerprint(args.dedupeKey)
+  ).slice(0, 24)}`;
+  const own = await ctx.db
+    .query("operatorAgentThreads")
+    .withIndex("owner_conversation", (q) =>
+      q
+        .eq("ownerUserId", args.operatorUserId)
+        .eq("channel", "mcp")
+        .eq("conversationKey", ownKey),
+    )
+    .unique();
+  if (own) return own._id;
+  const shared = await createOrGetChannelThread(ctx, {
+    operatorUserId: args.operatorUserId,
+    channel: "mcp",
+    conversationKey: args.defaultConversationKey,
+    title,
+  });
+  const retried = await ctx.db
+    .query("operatorAgentMessages")
+    .withIndex("thread_dedupe", (q) =>
+      q.eq("threadId", shared.threadId).eq("dedupeKey", args.dedupeKey),
+    )
+    .first();
+  if (retried || (await activeOperatorRuns(ctx, shared.threadId)).length === 0)
+    return shared.threadId;
+  return (
+    await createOrGetChannelThread(ctx, {
+      operatorUserId: args.operatorUserId,
+      channel: "mcp",
+      conversationKey: ownKey,
+      title,
+    })
+  ).threadId;
+}
+
+export const enqueueMcpTaskInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.optional(v.id("operatorAgentThreads")),
+    /** A caller-chosen conversation to continue, superseding its current run. */
+    conversationKey: v.optional(v.string()),
+    defaultConversationKey: v.string(),
+    mcpClientId: v.optional(v.string()),
+    content: v.string(),
+    dedupeKey: v.string(),
+    attachments: v.optional(v.array(operatorAttachmentValidator)),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const conversationKey = args.conversationKey?.trim();
+    const threadId =
+      args.threadId ??
+      (conversationKey
+        ? (
+            await createOrGetChannelThread(ctx, {
+              operatorUserId: args.operatorUserId,
+              channel: "mcp",
+              conversationKey,
+              title: "External operator agent",
+            })
+          ).threadId
+        : await defaultMcpTaskThread(ctx, {
+            operatorUserId: args.operatorUserId,
+            defaultConversationKey: args.defaultConversationKey,
+            dedupeKey: args.dedupeKey,
+          }));
+    const queued = await enqueueOperatorMessage(ctx, {
+      operatorUserId: args.operatorUserId,
+      threadId,
+      channel: "mcp",
+      mcpClientId: args.mcpClientId,
+      content: args.content,
+      dedupeKey: args.dedupeKey,
+      attachments: args.attachments,
+    });
+    return { threadId, ...queued };
+  },
+});
+
 function ownerRunResponse(response: Doc<"operatorAgentMessages"> | null) {
   return response
     ? {
@@ -7098,6 +7567,143 @@ export const getRunViewForOperatorInternal = internalQuery({
   },
 });
 
+/**
+ * get_operator_tasks: this conversation's subtasks (the latest run of each
+ * subtask conversation) or exact runs. Other operators' runs show progress and
+ * the final answer only, like get_operator_run.
+ */
+export const operatorTasksInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    runIds: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const notFound: string[] = [];
+    let runs: Doc<"operatorAgentRuns">[] = [];
+    if (args.runIds?.length) {
+      for (const value of [...new Set(args.runIds)].slice(0, MAX_OPERATOR_TASK_READS)) {
+        const runId = ctx.db.normalizeId("operatorAgentRuns", value.trim());
+        const run = runId ? await ctx.db.get(runId) : null;
+        if (run) runs.push(run);
+        else notFound.push(value);
+      }
+    } else {
+      const seenThreads = new Set<string>();
+      const recent = await ctx.db
+        .query("operatorAgentRuns")
+        .withIndex("parent_thread_created", (q) =>
+          q.eq("parentThreadId", args.threadId),
+        )
+        .order("desc")
+        .take(100);
+      // A follow-up supersedes a subtask's earlier run.
+      for (const run of recent) {
+        if (seenThreads.has(String(run.threadId))) continue;
+        seenThreads.add(String(run.threadId));
+        runs.push(run);
+        if (runs.length >= MAX_OPERATOR_TASK_READS) break;
+      }
+      runs = runs.reverse();
+    }
+    let answerBudget = OPERATOR_TASK_ANSWER_BUDGET;
+    const tasks = await Promise.all(
+      runs.map(async (run) => {
+        const [{ owner, response, progress }, thread] = await Promise.all([
+          loadOperatorRunResult(ctx, {
+            operatorUserId: args.operatorUserId,
+            runId: run._id,
+            anyOperator: true,
+          }),
+          ctx.db.get(run.threadId),
+        ]);
+        const finished = !ACTIVE_RUN_STATUSES.has(run.status);
+        const pending =
+          owner && run.status === "waiting_confirmation" && run.checkpoint?.pendingConfirmationId
+            ? await ctx.db.get(run.checkpoint.pendingConfirmationId)
+            : null;
+        const operator = owner ? undefined : await ctx.db.get(run.operatorUserId);
+        return {
+          run,
+          response,
+          view: {
+            runId: run._id,
+            operatorThreadId: run.threadId,
+            title: thread?.title,
+            status: run.status,
+            subtask: run.parentThreadId === args.threadId,
+            ...(operator
+              ? { operator: operator.name ?? operator.email ?? "Another operator" }
+              : {}),
+            settled: operatorTaskSettled(run),
+            finished,
+            progress: {
+              iteration: progress.iteration,
+              executionCount: progress.executionCount,
+              lastToolName: progress.lastToolName,
+              steps: progress.steps?.slice(-OPERATOR_TASK_STEP_NAMES),
+            },
+            ...(pending?.status === "pending"
+              ? {
+                  pendingApproval: {
+                    confirmationId: pending._id,
+                    summary: pending.payload.summary,
+                    where: "the subtask's own conversation",
+                  },
+                }
+              : {}),
+            ...(progress.failure ? { failure: progress.failure } : {}),
+            createdAt: run.createdAt,
+            completedAt: run.completedAt,
+          },
+        };
+      }),
+    );
+    const views = tasks.map(({ response, view }) => {
+      if (!view.finished || !response?.content) return view;
+      const text = sanitizeOperatorReply(response.content).trim();
+      const limit = Math.max(0, Math.min(OPERATOR_TASK_ANSWER_CHARS, answerBudget));
+      answerBudget -= Math.min(text.length, limit);
+      return {
+        ...view,
+        answer: text.slice(0, limit),
+        ...(text.length > limit ? { answerTruncated: true } : {}),
+      };
+    });
+    return {
+      tasks: views,
+      settled: views.every((task) => task.settled),
+      counts: {
+        active: views.filter((task) => !task.finished && task.status !== "waiting_confirmation").length,
+        waitingApproval: views.filter((task) => task.status === "waiting_confirmation").length,
+        finished: views.filter((task) => task.finished).length,
+      },
+      ...(notFound.length ? { notFound } : {}),
+    };
+  },
+});
+
+/** Finished subtasks a parent run has read need no notice later. */
+export const markOperatorTasksReadInternal = internalMutation({
+  args: {
+    parentThreadId: v.id("operatorAgentThreads"),
+    runIds: v.array(v.id("operatorAgentRuns")),
+  },
+  handler: async (ctx, args) => {
+    const now = dayjs().valueOf();
+    for (const runId of args.runIds) {
+      const run = await ctx.db.get(runId);
+      if (
+        run?.parentThreadId === args.parentThreadId &&
+        !ACTIVE_RUN_STATUSES.has(run.status) &&
+        !run.parentNotifiedAt
+      )
+        await ctx.db.patch(run._id, { parentNotifiedAt: now });
+    }
+  },
+});
+
 export const resolveOperatorCoiTargetInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
@@ -7193,23 +7799,15 @@ export const cancelRunInternal = internalMutation({
   args: {
     operatorUserId: v.id("users"),
     threadId: v.id("operatorAgentThreads"),
+    /** Only this run; omitted, every active run of the conversation. */
+    runId: v.optional(v.id("operatorAgentRuns")),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
       anyOperator: true,
     });
-    const cancelled = await cancelActiveRunsForThread(
-      ctx,
-      args.threadId,
-      "cancelled_by_operator",
-    );
-    await invalidatePendingOperatorConfirmations(
-      ctx,
-      args.threadId,
-      "cancelled_by_operator",
-    );
-    return { cancelled: cancelled > 0 };
+    return cancelOwnRunsForThread(ctx, args);
   },
 });
 
@@ -7393,6 +7991,20 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
         existing.action !== args.toolName
       ) {
         throw new Error("Idempotency key was already used for another action");
+      }
+      // A live read reads current state again into the same audit row.
+      if (spec.live && existing.status !== "pending") {
+        if (run.status !== "running" || run.cancellationRequestedAt)
+          throw new Error("Operator agent run is no longer active");
+        await ctx.db.patch(existing._id, {
+          status: "pending",
+          updatedAt: dayjs().valueOf(),
+        });
+        return {
+          status: "execute" as const,
+          auditId: existing._id,
+          input: await resolveGoogleWorkspaceContinuation(ctx, args, input),
+        };
       }
       if (existing.status === "succeeded") {
         return {
@@ -7739,12 +8351,14 @@ export const getRunContextInternal = internalQuery({
       thread,
       messages: messages.reverse(),
       // Skill tools are offered only to operators with an enabled skill,
-      // run_skill_script only when one of them has scripts.
+      // run_skill_script only when one of them has scripts. A subtask
+      // cannot start or manage subtasks.
       toolNames: toolNames.filter(
         (name) =>
-          !OPERATOR_SKILL_TOOL_NAMES.has(name) ||
-          (operatorSkills.length > 0 &&
-            (name !== RUN_SKILL_SCRIPT_TOOL || scriptSkills)),
+          (!OPERATOR_SKILL_TOOL_NAMES.has(name) ||
+            (operatorSkills.length > 0 &&
+              (name !== RUN_SKILL_SCRIPT_TOOL || scriptSkills))) &&
+          !(run.parentRunId && OPERATOR_TASK_TOOL_NAMES.has(name)),
       ),
       operatorName: operator.user.name,
       operatorEmail: operator.user.email,
@@ -7998,8 +8612,16 @@ export const requestToolConfirmationInternal = internalMutation({
       if (
         existing.status === "failed" &&
         isRecoverableOperatorToolFailure(previousFailure)
-      )
+      ) {
+        // A record changed under the earlier approval: report that once, then
+        // let the same input be proposed again against the current record.
+        if (previousFailure.failure.code === "target_changed")
+          await ctx.db.patch(existing._id, {
+            idempotencyKey: `${args.idempotencyKey}:stale:${existing._id}`,
+            updatedAt: dayjs().valueOf(),
+          });
         return previousFailure;
+      }
       return executionOperatorToolFailure(
         args.toolName as OperatorAgentToolName,
         existing.status === "pending"
@@ -8072,6 +8694,14 @@ export const requestToolConfirmationInternal = internalMutation({
       args.toolName === "send_email_drafts"
         ? await sendDraftFingerprints(ctx, args.threadId, input.draftIds)
         : undefined;
+    // An automatic approval executes now; a manual one may wait for hours.
+    const targetVersions = automatic
+      ? []
+      : await captureOperatorTargetVersions(
+          ctx,
+          args.toolName as OperatorAgentToolName,
+          input,
+        );
     const confirmationId = await ctx.db.insert("operatorAgentConfirmations", {
       threadId: args.threadId,
       operatorUserId: args.operatorUserId,
@@ -8122,6 +8752,7 @@ export const requestToolConfirmationInternal = internalMutation({
         requiredRole: spec.requiredRole,
         targetKind: target.kind,
         targetId: target.id,
+        ...(targetVersions.length ? { targetVersions } : {}),
         summary,
       },
       status: automatic ? "completed" : "pending",
@@ -8485,7 +9116,10 @@ export const completeRunInternal = internalMutation({
         updatedAt: now,
       });
     }
-    if (!waiting) await scheduleOperatorHistoryCompaction(ctx, run.threadId);
+    if (!waiting) {
+      await scheduleOperatorHistoryCompaction(ctx, run.threadId);
+      await afterOperatorRunFinished(ctx, run);
+    }
     if (!waiting && run.executionKind !== "direct_tool") {
       const message = await ctx.db.get(run.agentMessageId);
       if (message) {
@@ -8924,6 +9558,7 @@ export const failRunInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
+    await afterOperatorRunFinished(ctx, run);
     if (run.status !== "failed" && run.status !== "completed")
       await emitOperatorNotification(ctx, {
         eventKey: `operator_run_failed:${run._id}`,

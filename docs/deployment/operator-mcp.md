@@ -69,6 +69,19 @@ OAuth and requests both scopes:
 }
 ```
 
+## Parallel tasks
+
+Each `run_operator_task` returns a `runId` and `threadId`. Several agents (or
+subagents of one Claude Code or Codex session) can start tasks at once: a call
+without `thread_id` or `conversation_key` uses the connection's default
+conversation only while no task is running there, and otherwise starts its own,
+so parallel calls never cancel each other. Pass `thread_id` to follow up on a
+task; that replaces the conversation's current run. Watch a run with
+`get_operator_run` and `wait_seconds` (up to 60) instead of tight polling, and
+stop it with `cancel_operator_run`, which also stops the subtasks it started.
+The operator agent can itself split work into subtasks; they appear as their own
+conversations and in the run's result.
+
 ## Access and safety
 
 - Only an active operator profile can complete the operator authorization; a

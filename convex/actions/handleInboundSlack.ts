@@ -1,6 +1,6 @@
 "use node";
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -345,30 +345,49 @@ async function processOperatorBatch(
           ))
           ? { expectedTitle: channelThread.title, titlePrefix }
           : undefined;
-      const queued = await ctx.runMutation(
-        internalApi.operatorAgent.enqueueMessageInternal,
-        {
-          operatorUserId,
-          threadId,
-          channel: "slack",
-          content,
-          dedupeKey:
-            refreshedEvent.canonicalEventKey ?? refreshedEvent.eventKey,
-          slackThreadContext,
-          attachments: inboundAttachments.flatMap((attachment) =>
-            attachment.fileId
-              ? [
-                  {
-                    fileId: attachment.fileId,
-                    filename: attachment.filename,
-                    contentType: attachment.contentType,
-                    size: attachment.size ?? 0,
-                  },
-                ]
-              : [],
-          ),
-        },
-      );
+      let queued: { runId: Id<"operatorAgentRuns"> };
+      try {
+        queued = await ctx.runMutation(
+          internalApi.operatorAgent.enqueueMessageInternal,
+          {
+            operatorUserId,
+            threadId,
+            channel: "slack",
+            content,
+            dedupeKey:
+              refreshedEvent.canonicalEventKey ?? refreshedEvent.eventKey,
+            slackThreadContext,
+            attachments: inboundAttachments.flatMap((attachment) =>
+              attachment.fileId
+                ? [
+                    {
+                      fileId: attachment.fileId,
+                      filename: attachment.filename,
+                      contentType: attachment.contentType,
+                      size: attachment.size ?? 0,
+                    },
+                  ]
+                : [],
+            ),
+          },
+        );
+      } catch (error) {
+        // A user-facing rejection, such as another operator's request still
+        // running in this shared thread: say so in the thread.
+        if (!(error instanceof ConvexError) || typeof error.data !== "string")
+          throw error;
+        await sendOperatorSlackResponse(ctx, {
+          delivery: operatorSlackDelivery(refreshedEvent),
+          clientMessageId: `operator-agent:rejected:${refreshedEvent.eventKey}`,
+          response: { content: error.data },
+        });
+        await ctx.runMutation(internalApi.operatorSlack.completeEvent, {
+          eventId: refreshedEvent._id,
+        });
+        await updateOperatorSlackActivity(ctx, refreshedEvent, "failed");
+        pendingActivity.delete(event._id);
+        continue;
+      }
       if (titleGeneration) {
         await ctx.runMutation(
           internalApi.operatorAgent.scheduleSlackThreadTitleInternal,

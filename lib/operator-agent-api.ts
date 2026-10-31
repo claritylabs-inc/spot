@@ -54,6 +54,8 @@ type BackendMessage = {
   /** External system each tool reaches (operator registry), by tool name. */
   toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
+  /** A subtask's objective, written by the run that started it. */
+  fromParentTask?: boolean;
 };
 
 type OperatorAgentAttachment = {
@@ -66,14 +68,32 @@ type OperatorAgentAttachment = {
 
 type BackendAttachment = OperatorAgentAttachment;
 
+type BackendRunStatus =
+  | "queued"
+  | "running"
+  | "waiting_confirmation"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 type BackendRun = {
-  status:
-    | "queued"
-    | "running"
-    | "waiting_confirmation"
-    | "completed"
-    | "failed"
-    | "cancelled";
+  status: BackendRunStatus;
+  operatorUserId: string;
+};
+
+export type OperatorAgentSubtask = {
+  threadId: string;
+  runId: string;
+  /** The reply whose run started it; its row shows under that reply. */
+  messageId?: string;
+  title: string;
+  status: BackendRunStatus;
+  /** The subtask's most recent tool call. */
+  latestTool?: { toolName: string; status: string; label?: string };
+  /** The action waiting for approval in the subtask's conversation. */
+  approval?: string;
+  /** First line of its final answer once finished. */
+  answer?: string;
 };
 
 type BackendConfirmation = {
@@ -122,6 +142,9 @@ type GetThreadResult = {
   messages: BackendMessage[];
   activeRun: BackendRun | null;
   confirmations: BackendConfirmation[];
+  /** The conversation that started this one as a subtask. */
+  parent: { threadId: string; title: string } | null;
+  subtasks: OperatorAgentSubtask[];
 };
 type CreateThreadArgs = { initialContext?: PageContext };
 type ListIntentsArgs = { pageContext?: PageContext };
@@ -221,6 +244,7 @@ export type OperatorAgentMessage = {
   /** External system each tool reaches (operator registry), by tool name. */
   toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
+  fromParentTask?: boolean;
 };
 
 type OperatorAgentToolCall = {
@@ -237,7 +261,11 @@ export type OperatorAgentThreadDetail = {
   viewerUserId: string | null;
   messages: OperatorAgentMessage[];
   activeRun: boolean;
+  /** Another operator's run holds the conversation; only they can stop it. */
+  activeRunOperator: OperatorPerson | null;
   confirmations: OperatorAgentConfirmation[];
+  parent: { threadId: string; title: string } | null;
+  subtasks: OperatorAgentSubtask[];
 };
 
 export type OperatorToolPreviewItem = {
@@ -386,7 +414,10 @@ export function normalizeOperatorAgentThread(
       viewerUserId: null,
       messages: [],
       activeRun: false,
+      activeRunOperator: null,
       confirmations: [],
+      parent: null,
+      subtasks: [],
     };
   }
   const people = new Map(value.people.map((person) => [person.userId, person]));
@@ -425,8 +456,19 @@ export function normalizeOperatorAgentThread(
       toolCalls: message.toolCalls,
       toolIntegrations: message.toolIntegrations,
       attachments: message.attachments,
+      fromParentTask: message.fromParentTask,
     })),
     activeRun: value.activeRun !== null,
+    activeRunOperator:
+      value.activeRun && value.activeRun.operatorUserId !== value.viewerUserId
+        ? (people.get(value.activeRun.operatorUserId) ?? {
+            userId: value.activeRun.operatorUserId,
+            name: "Another operator",
+            avatarUrl: null,
+          })
+        : null,
     confirmations: value.confirmations.map(normalizeConfirmation),
+    parent: value.parent,
+    subtasks: value.subtasks,
   };
 }

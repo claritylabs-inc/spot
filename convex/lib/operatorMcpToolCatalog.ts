@@ -62,7 +62,7 @@ export function buildOperatorMcpToolCatalog(args: {
       name: "run_operator_task",
       title: "Run a durable operator task",
       description:
-        "Start or continue a durable internal Spot operator task. The agent can investigate across operator systems, invoke registered tools, pause for exact confirmation, and resume on any internal channel.",
+        "Start or continue a durable internal Spot operator task. The agent can investigate across operator systems, invoke registered tools, start parallel subtasks, pause for exact confirmation, and resume on any internal channel. Without thread_id or conversation_key, a call joins this connection's default conversation unless a task is already running there; then it starts its own conversation, so parallel callers never cancel each other. Continuing a conversation (thread_id or conversation_key) replaces its current run, and a conversation where another operator's task is running rejects the call. Returns runId and threadId; watch the run with get_operator_run and wait_seconds.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -72,7 +72,8 @@ export function buildOperatorMcpToolCatalog(args: {
           },
           thread_id: {
             type: "string",
-            description: "Optional operator thread ID to continue",
+            description:
+              "Optional operator thread ID to continue (from an earlier result); replaces that conversation's current run",
           },
           conversation_key: {
             type: "string",
@@ -125,11 +126,18 @@ export function buildOperatorMcpToolCatalog(args: {
       name: "get_operator_run",
       title: "Get an operator task result",
       description:
-        "Read an operator run: status, iteration, executionCount, lastToolName, step tool names, failure, response, checkpoint and metadata-only timing (per-iteration phase durations, model calls with router job and request IDs, tool execution times, and a run summary). Accepts the runId surfaced by read_operator_conversation; other operators' runs return a compact view without tool outputs.",
+        "Read an operator run: status, iteration, executionCount, lastToolName, step tool names, failure, response, checkpoint and metadata-only timing (per-iteration phase durations, model calls with router job and request IDs, tool execution times, and a run summary). Accepts the runId from run_operator_task or read_operator_conversation; other operators' runs return a compact view without tool outputs. wait_seconds (up to 60) waits until the run is completed, failed, cancelled or waiting_confirmation before answering; call again while it is queued or running.",
       inputSchema: {
         type: "object" as const,
         properties: {
           run_id: { type: "string", description: "Operator run ID" },
+          wait_seconds: {
+            type: "integer",
+            minimum: 0,
+            maximum: 60,
+            description:
+              "Optional seconds to wait for the run to finish or pause for approval; omit to read it now",
+          },
         },
         required: ["run_id"],
       },
@@ -144,7 +152,8 @@ export function buildOperatorMcpToolCatalog(args: {
     {
       name: "cancel_operator_run",
       title: "Cancel an operator task",
-      description: "Request cancellation of a queued or active operator run.",
+      description:
+        "Stop one queued, running or approval-waiting operator run you started, with the subtasks it started; its pending approval is withdrawn and completed writes are kept. Another operator's run cannot be stopped.",
       inputSchema: {
         type: "object" as const,
         properties: {

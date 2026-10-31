@@ -52,6 +52,10 @@ export const operatorToolActionConfirmationPayloadValidator = v.object({
   requiredRole: v.union(v.literal("operator"), v.literal("owner")),
   targetKind: v.optional(v.string()),
   targetId: v.optional(v.string()),
+  /** Each changed record's version when the action was proposed (`convex/lib/operatorTargetVersions.ts`). */
+  targetVersions: v.optional(
+    v.array(v.object({ kind: v.string(), id: v.string(), version: v.string() })),
+  ),
   summary: v.string(),
 });
 

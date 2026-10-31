@@ -1,0 +1,137 @@
+"use client";
+
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
+
+import { SubtaskStatusGlyph } from "@/components/agent-dock/agent-dock-subtasks";
+import type { AgentDockSubtask } from "@/components/agent-dock/types";
+import { PillButton } from "@/components/ui/pill-button";
+import type {
+  OperatorAgentSubtask,
+  OperatorPerson,
+} from "@/lib/operator-agent-api";
+import { toolActivityLabel } from "@/lib/tool-activity-label";
+import { typeStyle } from "@/lib/typography";
+import { cn } from "@/lib/utils";
+
+export const DOCK_SUBTASK_STATUS: Record<
+  OperatorAgentSubtask["status"],
+  AgentDockSubtask["status"]
+> = {
+  queued: "working",
+  running: "working",
+  waiting_confirmation: "approval",
+  completed: "done",
+  failed: "failed",
+  cancelled: "stopped",
+};
+
+/** The one line that changes as a subtask works: its latest step, approval or answer. */
+function subtaskDetail(task: OperatorAgentSubtask) {
+  if (task.status === "waiting_confirmation") {
+    const summary = task.approval?.split("\n")[0]?.trim();
+    return summary ? summary.charAt(0).toUpperCase() + summary.slice(1) : "Needs approval";
+  }
+  if (task.status === "cancelled") return "Stopped";
+  if (task.status === "completed" || task.status === "failed")
+    return task.answer ?? (task.status === "failed" ? "Failed" : "Done");
+  const tool = task.latestTool;
+  if (!tool) return task.status === "queued" ? "Starting" : "Thinking";
+  const running = tool.status === "running" || tool.status === "requested";
+  const label = toolActivityLabel(tool.toolName, running ? "progressive" : "past");
+  return tool.label ? `${label} · ${tool.label}` : label;
+}
+
+/**
+ * The subtasks a reply started, one line each: name, then the latest step
+ * (shimmering while it works), the action awaiting approval, or the answer.
+ */
+export function OperatorSubtaskList({
+  subtasks,
+  onOpen,
+}: {
+  subtasks: OperatorAgentSubtask[];
+  onOpen: (threadId: string) => void;
+}) {
+  if (!subtasks.length) return null;
+  return (
+    <ul className="mt-2 w-full overflow-hidden rounded-xl border border-border bg-card">
+      {subtasks.map((task) => {
+        const working = task.status === "queued" || task.status === "running";
+        const approval = task.status === "waiting_confirmation";
+        const detail = subtaskDetail(task);
+        return (
+          <li key={task.threadId} className="border-t border-border first:border-t-0">
+            <button
+              type="button"
+              onClick={() => onOpen(task.threadId)}
+              className={cn(
+                "flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/40",
+                typeStyle("body.default"),
+              )}
+            >
+              <SubtaskStatusGlyph status={DOCK_SUBTASK_STATUS[task.status]} />
+              <span
+                className={cn("max-w-[45%] shrink-0 truncate", typeStyle("body.medium"))}
+              >
+                {task.title}
+              </span>
+              <span
+                title={detail}
+                className={cn(
+                  "min-w-0 flex-1 truncate",
+                  working ? "text-shimmer" : "text-muted-foreground",
+                )}
+              >
+                {detail}
+              </span>
+              {approval ? (
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-2.5 py-0.5 text-foreground ring-1 ring-border-emphasized",
+                    typeStyle("caption.medium"),
+                  )}
+                >
+                  Review
+                </span>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Replaces the composer while another operator's request holds the
+ * conversation: who, that it is live, and the one useful action.
+ */
+export function OperatorHeldComposer({
+  operator,
+  onNewChat,
+}: {
+  operator: OperatorPerson;
+  onNewChat: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl border border-input bg-card py-2 pr-2 pl-3">
+      <span className="relative flex shrink-0">
+        <Avatar
+          name={operator.name}
+          imageUrl={operator.avatarUrl}
+          className="size-6"
+        />
+        <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-card" />
+      </span>
+      <p className={cn("min-w-0 flex-1 truncate", typeStyle("body.default"))}>
+        <span className={typeStyle("body.medium")}>
+          {operator.name}&rsquo;s request is running
+        </span>
+        <span className="text-muted-foreground"> · you can reply when it finishes</span>
+      </p>
+      <PillButton type="button" variant="secondary" size="compact" onClick={onNewChat}>
+        New chat
+      </PillButton>
+    </div>
+  );
+}
