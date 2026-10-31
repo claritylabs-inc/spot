@@ -14,6 +14,7 @@ import {
 } from "./lib/operatorAgentToolRegistry";
 import { executionOperatorToolFailure } from "./lib/operatorAgentToolFailure";
 import { sanitizeOperatorReply } from "./lib/operatorToolOutput";
+import { scheduleOperatorInputDrain } from "./lib/operatorTasks";
 
 const invocationArgs = {
   operatorUserId: v.id("users"),
@@ -214,6 +215,8 @@ export const finish = internalMutation({
         : undefined,
       updatedAt: now,
     });
+    // A direct read holds the conversation while it runs.
+    await scheduleOperatorInputDrain(ctx, run.threadId);
   },
 });
 

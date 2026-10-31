@@ -1,5 +1,24 @@
 # Platform workflow QA
 
+## Operator queue and steer — October 31, 2026
+
+Native-local stack with the seeded operator, a fresh browser-enrolled operator and a synthetic second operator ("Maya Chen"). Runner logic was driven through the real internal mutations, the runner and drain (a temporary local-only module guarded by `SPOT_ENV === "local"`, since removed; copy and JSON results in `.context/qa/queue-steer/`). Screenshots are in `.context/qa/queue-steer/`.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| A's run is working. B queues, A queues, B's steer is downgraded to a queued message, and B's replace is rejected with A's name. Completion drains B1, then A2, then B3 in order | Passed locally | `runtime-results.json` `queueSubmit`, `queueDrain` |
+| A steer is applied at iteration 0. A resumed step re-injects only that steer. A router retry injects it plus a newer one. The next iteration and a stale runner attempt inject nothing. History reads user, steers, reply | Passed locally | `claim` |
+| An unclaimed steer becomes the next turn when the run completes. Stop by the owner cancels the owner's steer while Maya's queued message drains. Maya cannot stop or replace A's run | Passed locally | `steerOnCompletion`, `stop` |
+| A `run_operator_tasks` follow-up steers a running subtask (`delivery: steered`, `pendingFollowUps: 1`) and starts as the subtask's next run (still linked to the parent) when it finishes. A follow-up behind another operator's run in the subtask conversation reports `queued` with `settled: false` | Passed locally | `subtasks` |
+| MCP `run_operator_task` on a busy explicit thread queues by default. A retry with the same key returns the same input as a duplicate. `if_busy: steer` steers. Another operator's `replace` is rejected. `get_operator_run` `input_id` reads the pending input | Passed locally | `mcp` |
+| Slack: another operator's mention in a busy shared thread queues with "Queued behind … I'll reply here when it's done.". The owner's mention steers ("Added to the current request."). A retried event is a duplicate, and no second acknowledgement is posted | Passed locally (internal mutation; no real Slack) | `slack` |
+| The real runner reaches the model call with the claim in place (`steer_claim` timing phase), then fails on the known local router callback limit | Passed locally | `operatorRunTimings` |
+| Own run working: the composer shows Queue, Stop and Steer. Enter steers, and the new row shows "Steering:" | Passed locally | `02-own-run-steer-queue-stop.png` |
+| Pending rows for every viewer: a failed row first (Couldn't start, with New chat and Dismiss), Steering, Maya's Queued row (no controls), and the viewer's Queued row with New chat, Send now and ×. More than 3 rows collapse to "+N more" | Passed locally | `00-collapsed-rows.png`, `01-own-run-pending-rows.png` |
+| A steer row inside the reply, between its activity and its answer | Passed locally | `03-steer-row-in-reply.png` |
+| Another operator's run: banner ("Maya Chen's request is running · your message will wait", New chat), enabled input, no Stop. Enter queues with the viewer's avatar and no Send now | Passed locally | `04-other-run-banner.png`, `05-other-run-queued.png` |
+| A model-driven run that actually reads injected guidance and changes course | Blocked locally | cl-router rejects job callbacks to the sandbox's local backend (`job callback is not permitted`) |
+
 ## Operator subtasks and concurrent operators — October 30, 2026
 
 Native-local stack with the seeded operator and a synthetic second operator,

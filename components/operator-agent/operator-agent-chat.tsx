@@ -19,6 +19,7 @@ import {
   type ChatComposerHandle,
 } from "@/components/chat/chat-composer";
 import { useChatAction } from "@/components/chat/use-chat-action";
+import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePageContext } from "@/hooks/use-page-context";
@@ -36,7 +37,7 @@ import {
   operatorThreadContextHref,
 } from "./operator-page-context";
 import { OperatorConversation } from "./operator-conversation";
-import { OperatorHeldComposer } from "./operator-subtasks";
+import { OperatorPendingInputs, OperatorRunBanner } from "./operator-queue";
 
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_MAX_AGGREGATE_BYTES = 50 * 1024 * 1024;
@@ -58,6 +59,8 @@ export function OperatorAgentChat({
   const searchParams = useSearchParams();
   const { context: registeredPageContext } = usePageContext();
   const composerRef = useRef<ChatComposerHandle>(null);
+  // ⌥Enter or the Queue button: queue instead of steering your own run.
+  const queueNextRef = useRef(false);
   const {
     pending: submitting,
     run: runSubmission,
@@ -128,6 +131,26 @@ export function OperatorAgentChat({
   }, [refreshSuggestions, suggestionsContextKey, suggestionsStale]);
   const [planMode, setPlanMode] = useState(false);
   const running = detail.activeRun || submitting;
+  const ownRun = detail.activeRun && !detail.activeRunOperator;
+  const waitingApproval = detail.activeRunStatus === "waiting_confirmation";
+  const stop = () => {
+    if (!activeThreadId) return;
+    // Stopping takes your pending guidance with it; an empty composer gets it back.
+    const steering = detail.pendingInputs
+      .filter(
+        (input) =>
+          input.mode === "steer" &&
+          input.canCancel &&
+          input.status === "pending",
+      )
+      .map((input) => input.content);
+    void cancelRun({ threadId: activeThreadId })
+      .then(() => {
+        if (steering.length && composerRef.current?.isEmpty())
+          composerRef.current.setValueAndFocus(steering.join("\n\n"));
+      })
+      .catch(reportError("Could not stop the task"));
+  };
   const lastMessage = detail.messages.at(-1);
   const nextMessageSuggestion =
     !running && !activeThread?.archivedAt && lastMessage?.role === "assistant"
@@ -191,8 +214,17 @@ export function OperatorAgentChat({
 
   const submit = useCallback(
     (message: PromptInputMessage) => {
+      const queueNext = queueNextRef.current;
+      queueNextRef.current = false;
       const text = message.text.trim();
       if (!text && message.files.length === 0) return;
+      // While a run holds the chat: your own run takes guidance (files and
+      // ⌥Enter queue instead); anyone else's run queues the message.
+      const whenBusy = !detail.activeRun
+        ? undefined
+        : detail.activeRunOperator || queueNext || message.files.length > 0
+          ? ("queue" as const)
+          : ("steer" as const);
       const skills = (message.references ?? [])
         .filter((reference) => reference.kind === "skill")
         .map((reference) => reference.id);
@@ -244,6 +276,7 @@ export function OperatorAgentChat({
               : {}),
             ...(planMode ? { planMode: true } : {}),
             ...(skills.length > 0 ? { skills } : {}),
+            ...(whenBusy ? { whenBusy } : {}),
           });
           setPlanMode(false);
         } catch (error) {
@@ -268,6 +301,8 @@ export function OperatorAgentChat({
       runSubmission,
       retainedThreadContext,
       planMode,
+      detail.activeRun,
+      detail.activeRunOperator,
     ],
   );
 
@@ -332,26 +367,45 @@ export function OperatorAgentChat({
         }
         onOpenThread={(threadId) => dock.openThread(threadId)}
         composer={
-          detail.activeRunOperator ? (
-            <OperatorHeldComposer
-              operator={detail.activeRunOperator}
-              onNewChat={dock.newChat}
-            />
-          ) : (
+          <div
+            className="contents"
+            onKeyDownCapture={(event) => {
+              if (event.key === "Enter") queueNextRef.current = event.altKey;
+            }}
+          >
           <ChatComposer
             ref={composerRef}
             collabScope={activeThreadId ? `chat:${activeThreadId}` : undefined}
             onSubmit={submit}
-            onStop={() => {
-              if (!activeThreadId) return;
-              void cancelRun({ threadId: activeThreadId }).catch(
-                reportError("Could not stop the task"),
-              );
-            }}
+            banner={
+              <>
+                <OperatorPendingInputs
+                  inputs={detail.pendingInputs}
+                  onOpenThread={(threadId) => dock.openThread(threadId)}
+                />
+                {detail.activeRunOperator ? (
+                  <OperatorRunBanner
+                    operator={detail.activeRunOperator}
+                    waitingApproval={waitingApproval}
+                    onNewChat={dock.newChat}
+                  />
+                ) : null}
+              </>
+            }
+            busySubmitLabel={
+              !detail.activeRun ? undefined : ownRun ? "Steer" : "Queue"
+            }
+            onStop={ownRun || !detail.activeRun ? stop : undefined}
             placeholder={
-              invocableSkills?.length
-                ? "Ask the operator agent… (/ for skills)"
-                : "Ask the operator agent…"
+              ownRun
+                ? waitingApproval
+                  ? "Add guidance… it applies after you decide"
+                  : "Add guidance for the running request…"
+                : detail.activeRunOperator
+                  ? "Write a message… it starts when their request finishes"
+                  : invocableSkills?.length
+                    ? "Ask the operator agent… (/ for skills)"
+                    : "Ask the operator agent…"
             }
             skills={invocableSkills}
             suggestion={nextMessageSuggestion}
@@ -379,6 +433,19 @@ export function OperatorAgentChat({
             }
             toolbarEnd={
               <>
+                {ownRun ? (
+                  <PillButton
+                    type="button"
+                    variant="secondary"
+                    size="compact"
+                    onClick={() => {
+                      queueNextRef.current = true;
+                      composerRef.current?.submit();
+                    }}
+                  >
+                    Queue
+                  </PillButton>
+                ) : null}
                 <AgentDockPlanToggle
                   active={planMode}
                   onToggle={() => setPlanMode((current) => !current)}
@@ -397,7 +464,7 @@ export function OperatorAgentChat({
               </>
             }
           />
-          )
+          </div>
         }
       />
     </div>

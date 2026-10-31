@@ -144,6 +144,10 @@ import {
 } from "./lib/operatorToolRecovery";
 import { threadPageContext } from "./lib/threadPageContext";
 import {
+  operatorSteerArtifact,
+  operatorSteerModelText,
+} from "./lib/operatorAgentInputs";
+import {
   generateAgentTextForOperatorTask,
   generatedTextFromResult,
 } from "./lib/models";
@@ -669,6 +673,7 @@ export const run = internalAction({
         operatorTeamAddress?: string;
         emailPrompts: EmailPrompts;
         operatorSkills: Array<{ name: string; description: string; hasScripts: boolean }>;
+        steered: boolean;
       } | null = await timer.time("run_context", () =>
         ctx.runQuery(internal.operatorAgent.getRunContextInternal, {
           runId: args.runId,
@@ -715,9 +720,13 @@ export const run = internalAction({
           ? timer.time("activity", () => writeActivity(update))
           : Promise.resolve();
 
-      const selected = selectBoundedAgentHistory(context.messages, {
-        currentMessageId: String(run.userMessageId),
-      });
+      // This run's own guidance enters at the step that applied it, below.
+      const selected = selectBoundedAgentHistory(
+        context.messages.filter(
+          (message) => operatorSteerArtifact(message)?.runId !== run._id,
+        ),
+        { currentMessageId: String(run.userMessageId) },
+      );
       const stagePrefix = String(expectedCheckpointIteration);
       const loaded = await traceStage(
         recordActivity,
@@ -875,6 +884,34 @@ export const run = internalAction({
             })) !== null,
         ));
       const resumed = !intentFamilies && executionJobStarted;
+      // Guidance from the run's operator joins at this step boundary. A step
+      // whose model call was already submitted re-adds exactly what it sent.
+      const steers: Array<{ content: string; authorName: string }> =
+        context.steered
+          ? await timer.time("steer_claim", () =>
+              ctx.runMutation(
+                internal.operatorAgentInputs.claimRunSteersInternal,
+                {
+                  runId: run._id,
+                  expectedRunnerAttempt,
+                  iteration: expectedCheckpointIteration ?? 0,
+                  claimNew: !executionJobStarted,
+                },
+              ),
+            )
+          : [];
+      if (steers.length)
+        messages = [
+          ...messages,
+          ...steers.map((steer) => ({
+            role: "user" as const,
+            content: operatorSteerModelText(steer),
+          })),
+        ];
+      const steeredRequest = [
+        run.objective,
+        ...steers.map((steer) => steer.content),
+      ].join("\n\n");
       const selectFamilies = () =>
         timer.time("family_selection", () =>
           selectOperatorToolFamilies(
@@ -891,7 +928,7 @@ export const run = internalAction({
               ],
               intentFamilies,
               resumed,
-              request: run.objective,
+              request: steeredRequest,
               commandEmail,
               recentToolActivity: run.checkpoint?.summary,
               pageType: threadPageContext(thread)?.pageType,
@@ -913,6 +950,11 @@ export const run = internalAction({
       if (intentFamilies || (resumed && !storedFamilies?.length)) {
         familySelection = await selectFamilies();
       } else if (storedFamilies?.length) {
+        // New guidance can need a family the run has not loaded; never drop one.
+        const steeredFamilies =
+          steers.length && !executionJobStarted
+            ? (await selectFamilies()).families
+            : [];
         familySelection = {
           families: [
             ...new Set([
@@ -923,6 +965,7 @@ export const run = internalAction({
                 context.messages,
                 continuation?.messages ?? [],
               ),
+              ...steeredFamilies,
             ]),
           ],
           source: "resume",
@@ -994,7 +1037,7 @@ export const run = internalAction({
       let executionPlan = run.executionPlan;
       if (!executingLegacyRun) {
         const planningContext: PlanningContext = {
-          objective: run.objective,
+          objective: steeredRequest,
           recentContext: recentConversationContext(
             selected.messages,
             String(run.userMessageId),

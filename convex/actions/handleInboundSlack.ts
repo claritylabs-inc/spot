@@ -345,7 +345,12 @@ async function processOperatorBatch(
           ))
           ? { expectedTitle: channelThread.title, titlePrefix }
           : undefined;
-      let queued: { runId: Id<"operatorAgentRuns"> };
+      let queued: {
+        delivery: "started" | "queued" | "steered";
+        runId?: Id<"operatorAgentRuns">;
+        notice?: string;
+        duplicate?: boolean;
+      };
       try {
         queued = await ctx.runMutation(
           internalApi.operatorAgent.enqueueMessageInternal,
@@ -357,6 +362,16 @@ async function processOperatorBatch(
             dedupeKey:
               refreshedEvent.canonicalEventKey ?? refreshedEvent.eventKey,
             slackThreadContext,
+            // While a run holds this thread: its operator steers it, anyone
+            // else waits for the next turn. A queued message replies here
+            // when the run it starts finishes.
+            whenBusy: "steer",
+            delivery: {
+              channel: "slack",
+              ...operatorSlackDelivery(refreshedEvent),
+              eventId: refreshedEvent._id,
+              clientMessageId: `operator-agent:input:${refreshedEvent.eventKey}`,
+            },
             attachments: inboundAttachments.flatMap((attachment) =>
               attachment.fileId
                 ? [
@@ -393,6 +408,21 @@ async function processOperatorBatch(
           internalApi.operatorAgent.scheduleSlackThreadTitleInternal,
           { threadId, ...titleGeneration },
         );
+      }
+      if (queued.delivery !== "started" || !queued.runId) {
+        if (queued.notice && !queued.duplicate)
+          await sendOperatorSlackResponse(ctx, {
+            delivery: operatorSlackDelivery(refreshedEvent),
+            clientMessageId: `operator-agent:waiting:${refreshedEvent.eventKey}`,
+            response: { content: queued.notice },
+          });
+        await ctx.runMutation(internalApi.operatorSlack.completeEvent, {
+          eventId: refreshedEvent._id,
+        });
+        if (queued.delivery === "steered")
+          await updateOperatorSlackActivity(ctx, refreshedEvent, "complete");
+        pendingActivity.delete(event._id);
+        continue;
       }
       const result = await waitForOperatorAgentRun(
         ctx,

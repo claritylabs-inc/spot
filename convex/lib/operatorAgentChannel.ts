@@ -1,19 +1,13 @@
 import dayjs from "dayjs";
 import { internal } from "../_generated/api";
-import { v, type Infer } from "convex/values";
+import { type Infer } from "convex/values";
+import { operatorChannelDeliveryValidator } from "./operatorAgentInputs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 
 const internalApi = internal as any;
 
-export const operatorChannelDeliveryValidator = v.object({
-  channel: v.literal("slack"),
-  teamId: v.string(),
-  channelId: v.string(),
-  threadTs: v.optional(v.string()),
-  eventId: v.optional(v.id("slackInboundEvents")),
-  clientMessageId: v.string(),
-});
+export { operatorChannelDeliveryValidator };
 export type OperatorChannelDelivery = Infer<
   typeof operatorChannelDeliveryValidator
 >;

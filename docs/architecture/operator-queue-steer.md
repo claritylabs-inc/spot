@@ -1,6 +1,6 @@
 # Operator queue and steer
 
-Status: design (packet 1). Builds on subtasks and turn ownership (`AGENT_TOOLS.md` → "Operator subtasks and concurrent operators").
+Status: implemented (packet 2; implementation notes at the end). Builds on subtasks and turn ownership (`AGENT_TOOLS.md` → "Operator subtasks and concurrent operators").
 
 ## Goal
 
@@ -26,7 +26,7 @@ New table `operatorAgentInputs`:
 | `delivery?` | `operatorChannelDelivery` (Slack). Used to schedule the reply for the run this input starts. |
 | `appliedIteration?`, `messageId?`, `runId?`, `error?`, `createdAt`, `updatedAt`, `resolvedAt?` | `messageId` is the transcript row that was written when the input was applied or started. |
 
-Indexes: `thread_status_created` (`threadId`, `status`, `createdAt`) for FIFO drain and the composer list, `target_status` (`targetRunId`, `status`) for steer claims, and `thread_dedupe` (`threadId`, `dedupeKey`) for retried Slack events and MCP idempotency keys.
+Indexes: `by_threadId_and_status_and_createdAt` for FIFO drain and the composer list, `by_targetRunId_and_status` for steer claims, and `by_threadId_and_dedupeKey` for retried Slack events and MCP idempotency keys.
 
 How it relates to the existing tables:
 
@@ -218,3 +218,15 @@ The composer reuses and extracts the tenant primitive: `QueuedThreadMessage` mov
 - this doc
 
 **Not touched (manager-owned):** the `operator_tasks` registry entries and executors, `operatorTargetVersions.ts`, `components/agent-dock/*`, and `OperatorSubtaskList`.
+
+## Implementation notes (packet 2)
+
+- **Runner.** `getRunContextInternal` returns `steered`: whether a pending or applied steer targets the run. The runner calls `claimRunSteersInternal` only then, so an unsteered step pays no extra mutation. When it does run, it is timed as `steer_claim`. A steer sent between the context read and the claim is taken one step later.
+- **Subtasks.** A follow-up can also return `delivery: "queued"`, when another operator's run holds the subtask conversation. `get_operator_tasks` gained one description phrase for `pendingFollowUps`. A subtask whose conversation has a follow-up waiting (from the parent or its owner) posts no notice until that follow-up's run finishes.
+- **UI.**
+  - `components/operator-agent/operator-queue.tsx` (new) holds `OperatorRunBanner`, `OperatorPendingInputs` and `OperatorSteerRows`. `OperatorHeldComposer` is removed.
+  - `ChatAssistantTurn` gained an `afterActivity` slot, and the steer rows render there.
+  - `SpotPromptInput` gained `busySubmitLabel`, plus `submit()` and `isEmpty()` on its handle.
+  - Failed rows (visible only to their sender) lead the list.
+- **Slack.** The handler always sends `whenBusy: "steer"`. The server keeps steering for the run's owner and queues anyone else's message.
+

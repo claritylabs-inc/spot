@@ -61,6 +61,7 @@ import { OperatorToolPreview } from "./operator-tool-preview";
 import { useAutoOpenOperatorPdfs } from "./operator-pdf-auto-open";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import { OperatorSubtaskList } from "./operator-subtasks";
+import { OperatorSteerRows } from "./operator-queue";
 import {
   operatorConversationEntries,
   OperatorToolActivity,
@@ -349,6 +350,7 @@ function OperatorMessageRow({
       !attachments &&
       !message.presentation &&
       subtasks.length === 0 &&
+      !message.steers?.length &&
       emailDrafts.length === 0 &&
       threadReplyDrafts(message.toolCalls).length === 0
     )
@@ -383,6 +385,11 @@ function OperatorMessageRow({
           return true;
         }}
         presentationDisabled={presentationDisabled}
+        afterActivity={
+          message.steers?.length ? (
+            <OperatorSteerRows steers={message.steers} />
+          ) : undefined
+        }
         after={
           <>
             <OperatorEmailDraftCards

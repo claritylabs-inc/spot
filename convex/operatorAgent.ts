@@ -162,7 +162,20 @@ import {
   afterOperatorRunFinished,
   assertNoOtherOperatorRun,
   operatorTaskSettled,
+  scheduleOperatorInputDrain,
 } from "./lib/operatorTasks";
+import {
+  cancelPendingSteers,
+  MAX_PENDING_INPUTS_PER_AUTHOR,
+  MAX_PENDING_INPUTS_PER_THREAD,
+  operatorChannelDeliveryValidator,
+  operatorSteerArtifact,
+  operatorWhenBusyValidator,
+  pendingOperatorInputs,
+  resolveOperatorInput,
+  type OperatorWhenBusy,
+} from "./lib/operatorAgentInputs";
+import type { OperatorChannelDelivery } from "./lib/operatorAgentChannel";
 import {
   assertOperatorTargetVersionsCurrent,
   captureOperatorTargetVersions,
@@ -1564,7 +1577,7 @@ async function findEmptyChatThread(
   return firstMessage ? null : thread;
 }
 
-async function insertOperatorThread(
+export async function insertOperatorThread(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
@@ -1666,8 +1679,10 @@ export async function cancelActiveRunsForThread(
           ctx.db.patch(ledger._id, { status: "cancelled", updatedAt: now }),
         ),
     );
+    await cancelPendingSteers(ctx, run._id, now);
     if (run.parentThreadId) await afterOperatorRunFinished(ctx, run);
   }
+  if (runs.length) await scheduleOperatorInputDrain(ctx, threadId);
   return runs.length;
 }
 
@@ -1775,6 +1790,313 @@ async function invalidatePendingOperatorConfirmations(
   );
 }
 
+async function existingDedupedTurn(
+  ctx: QueryCtx | MutationCtx,
+  threadId: Id<"operatorAgentThreads">,
+  dedupeKey: string,
+) {
+  const existing = await ctx.db
+    .query("operatorAgentMessages")
+    .withIndex("thread_dedupe", (index) =>
+      index.eq("threadId", threadId).eq("dedupeKey", dedupeKey),
+    )
+    .unique();
+  if (existing?.role !== "user") return null;
+  const run = await ctx.db
+    .query("operatorAgentRuns")
+    .withIndex("message", (index) => index.eq("userMessageId", existing._id))
+    .unique();
+  return run ? { messageId: existing._id, runId: run._id } : null;
+}
+
+type OperatorMessageArgs = Parameters<typeof enqueueOperatorMessage>[1];
+
+/** A message for a conversation that may be busy; email keeps `enqueueOperatorMessage`. */
+export type OperatorInputArgs = Omit<
+  OperatorMessageArgs,
+  "emailContent" | "emailReadOnly" | "preservePendingEmailConfirmation"
+> & {
+  /** What to do while a run holds the conversation; omitted means replace. */
+  whenBusy?: OperatorWhenBusy;
+  /** Channel reply for the run this input starts (Slack). */
+  delivery?: OperatorChannelDelivery;
+};
+
+export type OperatorInputResult =
+  | {
+      delivery: "started";
+      messageId: Id<"operatorAgentMessages">;
+      runId: Id<"operatorAgentRuns">;
+      duplicate: boolean;
+    }
+  | {
+      delivery: "queued";
+      inputId: Id<"operatorAgentInputs">;
+      /** Whose request holds the conversation. */
+      waitingFor: string;
+      duplicate: boolean;
+    }
+  | {
+      delivery: "steered";
+      inputId: Id<"operatorAgentInputs">;
+      runId: Id<"operatorAgentRuns">;
+      duplicate: boolean;
+    };
+
+async function operatorDisplayName(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+) {
+  const user = await ctx.db.get(userId);
+  return user?.name?.trim() || user?.email || "Another operator";
+}
+
+async function existingInputResult(
+  ctx: MutationCtx,
+  input: Doc<"operatorAgentInputs">,
+): Promise<OperatorInputResult> {
+  if (input.status === "started" && input.runId && input.messageId)
+    return {
+      delivery: "started",
+      messageId: input.messageId,
+      runId: input.runId,
+      duplicate: true,
+    };
+  if (input.mode === "steer" && input.targetRunId)
+    return {
+      delivery: "steered",
+      inputId: input._id,
+      runId: input.targetRunId,
+      duplicate: true,
+    };
+  const holder = input.targetRunId ? await ctx.db.get(input.targetRunId) : null;
+  return {
+    delivery: "queued",
+    inputId: input._id,
+    waitingFor: holder
+      ? await operatorDisplayName(ctx, holder.operatorUserId)
+      : "the current request",
+    duplicate: true,
+  };
+}
+
+/**
+ * The one way a message enters a conversation that may be busy. An idle
+ * conversation starts a run at once. While a run holds it, `whenBusy` decides:
+ * `steer` gives the run's own operator's guidance to that run at its next
+ * step (anyone else's steer is queued instead), `queue` waits for the next
+ * turn in order, and `replace` supersedes the operator's own run (another
+ * operator's run rejects it, as before).
+ */
+export async function submitOperatorInput(
+  ctx: MutationCtx,
+  args: OperatorInputArgs,
+): Promise<OperatorInputResult> {
+  const { whenBusy = "replace", delivery, ...message } = args;
+  if (message.dedupeKey) {
+    const turn = await existingDedupedTurn(ctx, message.threadId, message.dedupeKey);
+    if (turn) return { delivery: "started", ...turn, duplicate: true };
+    const input = await ctx.db
+      .query("operatorAgentInputs")
+      .withIndex("by_threadId_and_dedupeKey", (q) =>
+        q.eq("threadId", message.threadId).eq("dedupeKey", message.dedupeKey),
+      )
+      .first();
+    if (input) return existingInputResult(ctx, input);
+  }
+  let active = await activeOperatorRuns(ctx, message.threadId);
+  // A queue a missed drain left behind starts ahead of this message.
+  if (!active.length && (await pendingOperatorInputs(ctx, message.threadId, 1)).length) {
+    await drainOperatorInputs(ctx, message.threadId);
+    active = await activeOperatorRuns(ctx, message.threadId);
+  }
+  if (!active.length || whenBusy === "replace")
+    return {
+      delivery: "started",
+      ...(await enqueueOperatorMessage(ctx, message)),
+    };
+
+  const thread = await requireOperatorThread(
+    ctx,
+    message.threadId,
+    message.operatorUserId,
+    { anyOperator: true },
+  );
+  const holder =
+    active.find((run) => run.executionKind !== "direct_tool") ?? active[0];
+  const steer =
+    whenBusy === "steer" &&
+    holder.operatorUserId === message.operatorUserId &&
+    holder.executionKind !== "direct_tool";
+  const content = message.content.trim();
+  if (!content) throw new Error("Message content is required");
+  if (content.length > MAX_OPERATOR_MESSAGE_CHARS)
+    throw new Error(
+      `Operator messages must be at most ${MAX_OPERATOR_MESSAGE_CHARS.toLocaleString()} characters`,
+    );
+  if (steer && message.attachments?.length)
+    throw new ConvexError(
+      "Guidance for a running request is text only. Queue the message to attach files.",
+    );
+  const pending = await pendingOperatorInputs(ctx, message.threadId);
+  if (pending.length >= MAX_PENDING_INPUTS_PER_THREAD)
+    throw new ConvexError(
+      `This conversation already has ${MAX_PENDING_INPUTS_PER_THREAD} waiting messages. Wait for some to start, or start a new chat.`,
+    );
+  if (
+    pending.filter((input) => input.operatorUserId === message.operatorUserId)
+      .length >= MAX_PENDING_INPUTS_PER_AUTHOR
+  )
+    throw new ConvexError(
+      `You already have ${MAX_PENDING_INPUTS_PER_AUTHOR} waiting messages in this conversation. Cancel one, or start a new chat.`,
+    );
+  const attachments = await validateOperatorAttachments(
+    ctx,
+    message.operatorUserId,
+    message.attachments,
+    { requireUploadIntent: message.requireUploadIntent },
+  );
+  const now = dayjs().valueOf();
+  const pageContext = normalizeOperatorPageContext(message.pageContext);
+  const inputId = await ctx.db.insert("operatorAgentInputs", {
+    threadId: message.threadId,
+    operatorUserId: message.operatorUserId,
+    channel: message.channel,
+    mode: steer ? "steer" : "queue",
+    status: "pending",
+    content,
+    ...(attachments?.length ? { attachments } : {}),
+    ...(pageContext ? { pageContext } : {}),
+    ...(message.planRequested ? { planRequested: true } : {}),
+    ...(message.requestedSkills?.length
+      ? { requestedSkills: message.requestedSkills }
+      : {}),
+    slackThreadContext: message.slackThreadContext,
+    toolArtifacts: message.toolArtifacts?.length
+      ? message.toolArtifacts
+      : undefined,
+    mcpClientId: message.mcpClientId,
+    dedupeKey: message.dedupeKey,
+    parentRunId: message.parentRunId,
+    parentThreadId: message.parentThreadId,
+    targetRunId: holder._id,
+    delivery,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await ctx.db.patch(thread._id, { updatedAt: now });
+  return steer
+    ? { delivery: "steered", inputId, runId: holder._id, duplicate: false }
+    : {
+        delivery: "queued",
+        inputId,
+        waitingFor: await operatorDisplayName(ctx, holder.operatorUserId),
+        duplicate: false,
+      };
+}
+
+/** Why a queued input can no longer start, checked before any write. */
+export async function operatorInputStartProblem(
+  ctx: MutationCtx,
+  input: Doc<"operatorAgentInputs">,
+) {
+  try {
+    await requireOperatorForUser(ctx, input.operatorUserId);
+  } catch {
+    return "Its sender is no longer an active operator.";
+  }
+  if (!(await ctx.db.get(input.threadId)))
+    return "The conversation no longer exists.";
+  for (const attachment of input.attachments ?? []) {
+    if (!(await ctx.db.system.get("_storage", attachment.fileId)))
+      return `${attachment.filename} is no longer available.`;
+  }
+  for (const name of input.requestedSkills ?? []) {
+    if (!(await findLoadableOperatorSkill(ctx, input.operatorUserId, name)))
+      return `/${name} is no longer one of the sender's enabled skills.`;
+  }
+  return null;
+}
+
+/**
+ * Turns a pending input into a turn, in its own conversation or (`threadId`)
+ * a new chat. An input that can no longer start is marked failed instead.
+ */
+export async function startOperatorInput(
+  ctx: MutationCtx,
+  input: Doc<"operatorAgentInputs">,
+  options: { threadId?: Id<"operatorAgentThreads"> } = {},
+) {
+  const now = dayjs().valueOf();
+  const problem = await operatorInputStartProblem(ctx, input);
+  if (problem) {
+    await resolveOperatorInput(ctx, input, { status: "failed", error: problem }, now);
+    return null;
+  }
+  const threadId = options.threadId ?? input.threadId;
+  const sameThread = threadId === input.threadId;
+  const result = await enqueueOperatorMessage(ctx, {
+    operatorUserId: input.operatorUserId,
+    threadId,
+    channel: sameThread ? input.channel : "chat",
+    content: input.content,
+    attachments: input.attachments,
+    pageContext: input.pageContext,
+    planRequested: input.planRequested,
+    requestedSkills: input.requestedSkills,
+    toolArtifacts: input.toolArtifacts,
+    mcpClientId: input.mcpClientId,
+    ...(sameThread
+      ? {
+          slackThreadContext: input.slackThreadContext,
+          dedupeKey: input.dedupeKey,
+          parentRunId: input.parentRunId,
+          parentThreadId: input.parentThreadId,
+        }
+      : {}),
+  });
+  await resolveOperatorInput(
+    ctx,
+    input,
+    {
+      status: "started",
+      mode: "queue",
+      runId: result.runId,
+      messageId: result.messageId,
+    },
+    now,
+  );
+  if (input.delivery && sameThread)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.operatorChannelDelivery.deliver,
+      {
+        operatorUserId: input.operatorUserId,
+        runId: result.runId,
+        delivery: input.delivery,
+      },
+    );
+  return { inputId: input._id, ...result };
+}
+
+/**
+ * Starts the oldest pending input once no run holds the conversation. Steers
+ * whose run ended on its own are queued in place; one that cannot start fails
+ * and the next is tried. Starting one input ends the drain: its run now holds
+ * the turn.
+ */
+export async function drainOperatorInputs(
+  ctx: MutationCtx,
+  threadId: Id<"operatorAgentThreads">,
+) {
+  if ((await activeOperatorRuns(ctx, threadId)).length) return null;
+  for (const input of await pendingOperatorInputs(ctx, threadId)) {
+    const started = await startOperatorInput(ctx, input);
+    if (started) return started;
+  }
+  return null;
+}
+
 export async function enqueueOperatorMessage(
   ctx: MutationCtx,
   args: {
@@ -1826,23 +2148,8 @@ export async function enqueueOperatorMessage(
   const pageContext = normalizeOperatorPageContext(args.pageContext);
 
   if (args.dedupeKey) {
-    const existing = await ctx.db
-      .query("operatorAgentMessages")
-      .withIndex("thread_dedupe", (index) =>
-        index.eq("threadId", args.threadId).eq("dedupeKey", args.dedupeKey),
-      )
-      .unique();
-    if (existing?.role === "user") {
-      const run = await ctx.db
-        .query("operatorAgentRuns")
-        .withIndex("message", (index) =>
-          index.eq("userMessageId", existing._id),
-        )
-        .unique();
-      if (run) {
-        return { messageId: existing._id, runId: run._id, duplicate: true };
-      }
-    }
+    const existing = await existingDedupedTurn(ctx, args.threadId, args.dedupeKey);
+    if (existing) return { ...existing, duplicate: true };
   }
 
   const attachments = await validateOperatorAttachments(
@@ -2242,7 +2549,8 @@ async function runOperatorTasks(ctx: MutationCtx, args: OperatorToolDomainArgs) 
         parentThreadId: args.threadId,
         parentRunId: run._id,
       }));
-    const queued = await enqueueOperatorMessage(ctx, {
+    // A follow-up steers the subtask's working run instead of replacing it.
+    const queued = await submitOperatorInput(ctx, {
       operatorUserId: args.operatorUserId,
       threadId,
       channel: "chat",
@@ -2252,14 +2560,19 @@ async function runOperatorTasks(ctx: MutationCtx, args: OperatorToolDomainArgs) 
       toolArtifacts: [
         { type: "operator_subtask_objective", data: { parentRunId: run._id } },
       ],
+      whenBusy: "steer",
     });
     if (existing && existing.parentRunId !== run._id)
       await ctx.db.patch(threadId, { parentRunId: run._id });
+    const target =
+      queued.delivery === "steered" ? await ctx.db.get(queued.runId) : null;
     tasks.push({
-      runId: queued.runId,
+      ...(queued.delivery === "queued" ? {} : { runId: queued.runId }),
+      ...(queued.delivery === "started" ? {} : { inputId: queued.inputId }),
       operatorThreadId: threadId,
       title: existing?.title ?? item.title ?? null,
-      status: "queued" as const,
+      status: target?.status ?? ("queued" as const),
+      delivery: queued.delivery,
       followUp: Boolean(existing),
     });
   }
@@ -2287,8 +2600,25 @@ async function cancelOperatorTasks(ctx: MutationCtx, args: OperatorToolDomainArg
   );
   const results = [];
   for (const task of tasks) {
+    // Follow-ups this conversation sent that have not started go with it.
+    const now = dayjs().valueOf();
+    let followUps = 0;
+    for (const input of await pendingOperatorInputs(ctx, task.threadId)) {
+      if (input.parentThreadId !== args.threadId) continue;
+      await resolveOperatorInput(
+        ctx,
+        input,
+        { status: "cancelled", error: "The parent stopped this subtask." },
+        now,
+      );
+      followUps += 1;
+    }
     if (!ACTIVE_RUN_STATUSES.has(task.status)) {
-      results.push({ runId: task._id, status: "already_finished", runStatus: task.status });
+      results.push(
+        followUps
+          ? { runId: task._id, status: "cancelled", cancelledFollowUps: followUps }
+          : { runId: task._id, status: "already_finished", runStatus: task.status },
+      );
       continue;
     }
     // This run stopped it and gets the result here, so no notice repeats it.
@@ -5830,6 +6160,60 @@ export const getThread = query({
     ]);
     const activeRun =
       runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
+    // Waiting messages, oldest first; failed ones only to their sender.
+    const [pendingInputs, failedInputs] = await Promise.all([
+      pendingOperatorInputs(ctx, args.threadId),
+      ctx.db
+        .query("operatorAgentInputs")
+        .withIndex("by_threadId_and_status_and_createdAt", (q) =>
+          q.eq("threadId", args.threadId).eq("status", "failed"),
+        )
+        .order("desc")
+        .take(10)
+        .then((items) =>
+          items
+            .filter((input) => input.operatorUserId === operator.userId)
+            .reverse(),
+        ),
+    ]);
+    // Guidance a run took shows inside that run's reply, not as a turn.
+    const replyByRun = new Map(
+      runs.map((run) => [String(run._id), run.agentMessageId]),
+    );
+    const steersByReply = new Map<
+      string,
+      Array<{
+        id: Id<"operatorAgentMessages">;
+        content: string;
+        createdAt: number;
+        userId?: Id<"users">;
+        userName?: string;
+        fromParentTask: boolean;
+      }>
+    >();
+    for (const message of messages) {
+      const steer = operatorSteerArtifact(message);
+      const replyId = steer ? replyByRun.get(String(steer.runId)) : undefined;
+      if (!replyId) continue;
+      steersByReply.set(String(replyId), [
+        ...(steersByReply.get(String(replyId)) ?? []),
+        {
+          id: message._id,
+          content: message.content,
+          createdAt: message.createdAt,
+          userId: message.userId,
+          userName: message.userName,
+          fromParentTask: Boolean(
+            message.toolArtifacts?.some(
+              (artifact) => artifact.type === "operator_subtask_objective",
+            ),
+          ),
+        },
+      ]);
+    }
+    const steerRowIds = new Set(
+      [...steersByReply.values()].flat().map((steer) => String(steer.id)),
+    );
     const visibleMessageIds = new Set(messages.map((message) => message._id));
     const rerunnableRuns = new Map(
       runs
@@ -5849,6 +6233,7 @@ export const getThread = query({
       thread.ownerUserId,
       ...messages.flatMap((message) => (message.userId ? [message.userId] : [])),
       ...(activeRun ? [activeRun.operatorUserId] : []),
+      ...[...pendingInputs, ...failedInputs].map((input) => input.operatorUserId),
     ]);
     const entities = await activityEntities(ctx, messages);
     const parentThread = thread.parentThreadId
@@ -5926,7 +6311,10 @@ export const getThread = query({
       people: [...people.values()],
       messages: (
         await Promise.all(
-          [...messages].reverse().map(async (message) => {
+          [...messages]
+            .reverse()
+            .filter((message) => !steerRowIds.has(String(message._id)))
+            .map(async (message) => {
             const { presentation: _presentation, ...visible } = message;
             const presentation = await visiblePresentation(
               ctx,
@@ -5944,6 +6332,7 @@ export const getThread = query({
                 ? { fromParentTask: true }
                 : {}),
               rerun: rerunnableRuns.get(message._id),
+              steers: steersByReply.get(String(message._id)),
               toolCalls: message.toolCalls?.map((call) => ({
                 ...call,
                 effect: isOperatorAgentToolName(call.name)
@@ -5961,6 +6350,32 @@ export const getThread = query({
         )
       ).reverse(),
       activeRun,
+      pendingInputs: [...pendingInputs, ...failedInputs].map((input) => {
+        const own = input.operatorUserId === operator.userId;
+        // A steer whose run already ended waits as a queued message.
+        const steering =
+          input.status === "pending" &&
+          input.mode === "steer" &&
+          activeRun !== null &&
+          input.targetRunId === activeRun._id;
+        return {
+          id: input._id,
+          userId: input.operatorUserId,
+          mode: steering ? ("steer" as const) : ("queue" as const),
+          status: input.status,
+          content: input.content.slice(0, 500),
+          attachmentCount: input.attachments?.length ?? 0,
+          fromParentTask: Boolean(input.parentThreadId),
+          error: input.error,
+          createdAt: input.createdAt,
+          canCancel: own,
+          canSendNow:
+            own &&
+            input.status === "pending" &&
+            !steering &&
+            (!activeRun || activeRun.operatorUserId === operator.userId),
+        };
+      }),
       recentRuns: runs.slice(0, 25),
       confirmations: confirmations
         .filter((confirmation) =>
@@ -6251,6 +6666,8 @@ export const sendMessage = mutation({
     planMode: v.optional(v.boolean()),
     /** Skills invoked with `/name` in the composer. */
     skills: v.optional(v.array(v.string())),
+    /** While a run holds the conversation; omitted replaces your own run. */
+    whenBusy: v.optional(operatorWhenBusyValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -6268,7 +6685,7 @@ export const sendMessage = mutation({
         channel: "chat",
         initialContext: args.pageContext,
       }));
-    const result = await enqueueOperatorMessage(ctx, {
+    const result = await submitOperatorInput(ctx, {
       operatorUserId: operator.userId,
       threadId,
       channel: "chat",
@@ -6278,6 +6695,7 @@ export const sendMessage = mutation({
       requireUploadIntent: Boolean(args.attachments?.length),
       planRequested: args.planMode,
       requestedSkills,
+      whenBusy: args.whenBusy,
     });
     return { threadId, ...result };
   },
@@ -7033,6 +7451,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
         updatedAt: now,
       });
       await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
+      await afterOperatorRunFinished(ctx, run);
       return { status: "failed" as const, result: outcome, content };
     }
     if (run.executionKind === "goal") {
@@ -7091,6 +7510,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
+    await afterOperatorRunFinished(ctx, run);
     return { status: "completed" as const, result: outcome, content };
   },
 });
@@ -7357,10 +7777,20 @@ export const enqueueMessageInternal = internalMutation({
     dedupeKey: v.string(),
     slackThreadContext: v.optional(slackThreadContextSnapshotValidator),
     attachments: v.optional(v.array(operatorAttachmentValidator)),
+    whenBusy: v.optional(operatorWhenBusyValidator),
+    delivery: v.optional(operatorChannelDeliveryValidator),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
-    return enqueueOperatorMessage(ctx, args);
+    const result = await submitOperatorInput(ctx, args);
+    // A channel reply for a message that did not start a run.
+    const notice =
+      result.delivery === "queued"
+        ? `Queued behind ${result.waitingFor}'s request. I'll reply here when it's done.`
+        : result.delivery === "steered"
+          ? "Added to the current request."
+          : undefined;
+    return { ...result, ...(notice ? { notice } : {}) };
   },
 });
 
@@ -7420,13 +7850,15 @@ export const enqueueMcpTaskInternal = internalMutation({
   args: {
     operatorUserId: v.id("users"),
     threadId: v.optional(v.id("operatorAgentThreads")),
-    /** A caller-chosen conversation to continue, superseding its current run. */
+    /** A caller-chosen conversation to continue; `ifBusy` decides while it is busy. */
     conversationKey: v.optional(v.string()),
     defaultConversationKey: v.string(),
     mcpClientId: v.optional(v.string()),
     content: v.string(),
     dedupeKey: v.string(),
     attachments: v.optional(v.array(operatorAttachmentValidator)),
+    /** An explicit conversation's busy behaviour; queue by default. */
+    ifBusy: v.optional(operatorWhenBusyValidator),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
@@ -7447,7 +7879,7 @@ export const enqueueMcpTaskInternal = internalMutation({
             defaultConversationKey: args.defaultConversationKey,
             dedupeKey: args.dedupeKey,
           }));
-    const queued = await enqueueOperatorMessage(ctx, {
+    const queued = await submitOperatorInput(ctx, {
       operatorUserId: args.operatorUserId,
       threadId,
       channel: "mcp",
@@ -7455,6 +7887,7 @@ export const enqueueMcpTaskInternal = internalMutation({
       content: args.content,
       dedupeKey: args.dedupeKey,
       attachments: args.attachments,
+      whenBusy: args.ifBusy ?? "queue",
     });
     return { threadId, ...queued };
   },
@@ -7567,6 +8000,34 @@ export const getRunViewForOperatorInternal = internalQuery({
   },
 });
 
+/** get_operator_run by input_id: a message queued or steering through run_operator_task. */
+export const getInputForOperatorInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    inputId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const inputId = ctx.db.normalizeId("operatorAgentInputs", args.inputId.trim());
+    const input = inputId ? await ctx.db.get(inputId) : null;
+    if (!input) throw new Error("Operator input not found");
+    await requireOperatorThread(ctx, input.threadId, args.operatorUserId, {
+      anyOperator: true,
+    });
+    return {
+      inputId: input._id,
+      threadId: input.threadId,
+      mode: input.mode,
+      status: input.status,
+      // The run it started, or the run it steers.
+      runId:
+        input.runId ?? (input.mode === "steer" ? input.targetRunId : undefined),
+      ...(input.error ? { error: input.error } : {}),
+      createdAt: input.createdAt,
+    };
+  },
+});
+
 /**
  * get_operator_tasks: this conversation's subtasks (the latest run of each
  * subtask conversation) or exact runs. Other operators' runs show progress and
@@ -7618,7 +8079,13 @@ export const operatorTasksInternal = internalQuery({
           }),
           ctx.db.get(run.threadId),
         ]);
-        const finished = !ACTIVE_RUN_STATUSES.has(run.status);
+        // Follow-ups this conversation sent that the subtask has not taken yet.
+        const pendingFollowUps = (
+          await pendingOperatorInputs(ctx, run.threadId)
+        ).filter((input) => input.parentThreadId === args.threadId).length;
+        const awaitingFollowUp =
+          pendingFollowUps > 0 && !ACTIVE_RUN_STATUSES.has(run.status);
+        const finished = !ACTIVE_RUN_STATUSES.has(run.status) && !awaitingFollowUp;
         const pending =
           owner && run.status === "waiting_confirmation" && run.checkpoint?.pendingConfirmationId
             ? await ctx.db.get(run.checkpoint.pendingConfirmationId)
@@ -7631,13 +8098,15 @@ export const operatorTasksInternal = internalQuery({
             runId: run._id,
             operatorThreadId: run.threadId,
             title: thread?.title,
-            status: run.status,
+            // A finished subtask with a follow-up waiting is about to run again.
+            status: awaitingFollowUp ? ("queued" as const) : run.status,
             subtask: run.parentThreadId === args.threadId,
             ...(operator
               ? { operator: operator.name ?? operator.email ?? "Another operator" }
               : {}),
-            settled: operatorTaskSettled(run),
+            settled: !awaitingFollowUp && operatorTaskSettled(run),
             finished,
+            ...(pendingFollowUps ? { pendingFollowUps } : {}),
             progress: {
               iteration: progress.iteration,
               executionCount: progress.executionCount,
@@ -8365,6 +8834,19 @@ export const getRunContextInternal = internalQuery({
       operatorTeamAddress,
       emailPrompts: await loadEmailPrompts(ctx, run.operatorUserId),
       operatorSkills,
+      // Whether the step must claim or replay guidance (claimRunSteersInternal).
+      steered: (
+        await Promise.all(
+          (["pending", "applied"] as const).map((status) =>
+            ctx.db
+              .query("operatorAgentInputs")
+              .withIndex("by_targetRunId_and_status", (q) =>
+                q.eq("targetRunId", run._id).eq("status", status),
+              )
+              .first(),
+          ),
+        )
+      ).some((input) => input?.mode === "steer"),
     };
   },
 });

@@ -41,6 +41,12 @@ import {
   operatorRunTimingValidator,
 } from "./lib/operatorRunTiming";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
+import { slackThreadContextSnapshotValidator } from "./lib/slackThreadContext";
+import {
+  operatorChannelDeliveryValidator,
+  operatorInputModeValidator,
+  operatorInputStatusValidator,
+} from "./lib/operatorAgentInputs";
 import {
   activeNotificationTypeValidator,
   notificationActionTypeValidator,
@@ -5840,6 +5846,80 @@ export default defineSchema({
     .index("operator_created", ["operatorUserId", "createdAt"])
     .index("message", ["userMessageId"])
     .index("parent_thread_created", ["parentThreadId", "createdAt"]),
+
+  // A message sent while a run holds its conversation: queued for the next
+  // turn, or guidance (steer) the working run takes at its next step.
+  operatorAgentInputs: defineTable({
+    threadId: v.id("operatorAgentThreads"),
+    operatorUserId: v.id("users"),
+    channel: v.union(
+      v.literal("chat"),
+      v.literal("slack"),
+      v.literal("imessage"),
+      v.literal("email"),
+      v.literal("mcp"),
+    ),
+    mode: operatorInputModeValidator,
+    status: operatorInputStatusValidator,
+    content: v.string(),
+    // Validated when queued; held until the input starts or is cancelled.
+    attachments: v.optional(
+      v.array(
+        v.object({
+          fileId: v.id("_storage"),
+          filename: v.string(),
+          contentType: v.string(),
+          size: v.number(),
+        }),
+      ),
+    ),
+    pageContext: v.optional(
+      v.object({
+        pageType: v.string(),
+        entityId: v.optional(v.string()),
+        summary: v.optional(v.string()),
+        href: v.optional(v.string()),
+        related: v.optional(
+          v.array(
+            v.object({
+              kind: v.string(),
+              id: v.string(),
+              label: v.optional(v.string()),
+            }),
+          ),
+        ),
+      }),
+    ),
+    planRequested: v.optional(v.boolean()),
+    requestedSkills: v.optional(v.array(v.string())),
+    slackThreadContext: v.optional(slackThreadContextSnapshotValidator),
+    toolArtifacts: v.optional(
+      v.array(v.object({ type: v.string(), data: v.any() })),
+    ),
+    mcpClientId: v.optional(v.string()),
+    dedupeKey: v.optional(v.string()),
+    // Sent by a parent run through run_operator_tasks.
+    parentRunId: v.optional(v.id("operatorAgentRuns")),
+    parentThreadId: v.optional(v.id("operatorAgentThreads")),
+    // The run active when it was sent: the one a steer applies to.
+    targetRunId: v.optional(v.id("operatorAgentRuns")),
+    delivery: v.optional(operatorChannelDeliveryValidator),
+    appliedIteration: v.optional(v.number()),
+    // The transcript row written when the input was applied or started.
+    messageId: v.optional(v.id("operatorAgentMessages")),
+    runId: v.optional(v.id("operatorAgentRuns")),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_threadId_and_status_and_createdAt", [
+      "threadId",
+      "status",
+      "createdAt",
+    ])
+    .index("by_targetRunId_and_status", ["targetRunId", "status"])
+    .index("by_threadId_and_dedupeKey", ["threadId", "dedupeKey"]),
 
   // Metadata-only timing, one row per runner segment, written by the
   // mutation that ends the segment; kept off the hot run document and swept

@@ -1,14 +1,8 @@
 "use client";
 
-import { Avatar } from "@claritylabs-inc/ui/components/avatar";
-
 import { SubtaskStatusGlyph } from "@/components/agent-dock/agent-dock-subtasks";
 import type { AgentDockSubtask } from "@/components/agent-dock/types";
-import { PillButton } from "@/components/ui/pill-button";
-import type {
-  OperatorAgentSubtask,
-  OperatorPerson,
-} from "@/lib/operator-agent-api";
+import type { OperatorAgentSubtask } from "@/lib/operator-agent-api";
 import { toolActivityLabel } from "@/lib/tool-activity-label";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -99,39 +93,5 @@ export function OperatorSubtaskList({
         );
       })}
     </ul>
-  );
-}
-
-/**
- * Replaces the composer while another operator's request holds the
- * conversation: who, that it is live, and the one useful action.
- */
-export function OperatorHeldComposer({
-  operator,
-  onNewChat,
-}: {
-  operator: OperatorPerson;
-  onNewChat: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-input bg-card py-2 pr-2 pl-3">
-      <span className="relative flex shrink-0">
-        <Avatar
-          name={operator.name}
-          imageUrl={operator.avatarUrl}
-          className="size-6"
-        />
-        <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-card" />
-      </span>
-      <p className={cn("min-w-0 flex-1 truncate", typeStyle("body.default"))}>
-        <span className={typeStyle("body.medium")}>
-          {operator.name}&rsquo;s request is running
-        </span>
-        <span className="text-muted-foreground"> · you can reply when it finishes</span>
-      </p>
-      <PillButton type="button" variant="secondary" size="compact" onClick={onNewChat}>
-        New chat
-      </PillButton>
-    </div>
   );
 }
