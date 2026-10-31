@@ -87,7 +87,7 @@ export function OperatorSubtaskList({
               {approval ? (
                 <span
                   className={cn(
-                    "shrink-0 rounded-full bg-amber-50 px-2.5 py-0.5 text-amber-700 ring-1 ring-amber-200",
+                    "shrink-0 rounded-full px-2.5 py-0.5 text-foreground ring-1 ring-border-emphasized",
                     typeStyle("caption.medium"),
                   )}
                 >

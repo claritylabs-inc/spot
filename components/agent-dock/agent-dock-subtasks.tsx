@@ -1,27 +1,30 @@
 "use client";
 
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
+import {
+  StatusIndicator,
+  type StatusIndicatorKind,
+} from "@claritylabs-inc/ui/components/status-tag";
+
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { AgentDockSubtask } from "./types";
 
 const STACK_MARKS = 4;
 
-/** One 16-unit circle family: ring states for work in flight, filled states for outcomes. */
 const STATUS_ICON: Record<
-  AgentDockSubtask["status"],
-  { label: string; color: string }
+  Exclude<AgentDockSubtask["status"], "working">,
+  { label: string; indicator: StatusIndicatorKind }
 > = {
-  working: { label: "Working", color: "text-primary" },
-  approval: { label: "Needs approval", color: "text-amber-500" },
-  done: { label: "Done", color: "text-emerald-500" },
-  failed: { label: "Failed", color: "text-destructive" },
-  stopped: { label: "Stopped", color: "text-muted-foreground/50" },
+  approval: { label: "Needs approval", indicator: "waiting" },
+  done: { label: "Done", indicator: "complete" },
+  failed: { label: "Failed", indicator: "error" },
+  stopped: { label: "Stopped", indicator: "cancelled" },
 };
 
 /**
- * A subtask's state as one mark from a single circle family: a spinning arc
- * while it works; filled discs for needs approval (pause), done (check),
- * failed (cross) and stopped (square).
+ * A subtask's state in the logo blue: the loading spinner while it works,
+ * otherwise the status tag's indicator for that state.
  */
 export function SubtaskStatusGlyph({
   status,
@@ -30,71 +33,14 @@ export function SubtaskStatusGlyph({
   status: AgentDockSubtask["status"];
   className?: string;
 }) {
-  const { label, color } = STATUS_ICON[status];
+  const mark = cn("size-3.5 shrink-0 text-brand-blue", className);
+  if (status === "working")
+    return <Spinner aria-label="Working" className={mark} />;
+  const { label, indicator } = STATUS_ICON[status];
   return (
-    <svg
-      viewBox="0 0 16 16"
-      role="img"
-      aria-label={label}
-      className={cn(
-        "size-3.5 shrink-0",
-        color,
-        // The ring is uniform, so the whole mark turns with its arc.
-        status === "working" && "motion-safe:animate-spin",
-        className,
-      )}
-    >
-      {status === "working" ? (
-        <>
-          <circle
-            cx="8"
-            cy="8"
-            r="6.25"
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity="0.2"
-            strokeWidth="1.75"
-          />
-          <path
-            d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-          />
-        </>
-      ) : (
-        <>
-          <circle cx="8" cy="8" r="7" fill="currentColor" />
-          {status === "approval" ? (
-            <path
-              d="M6.25 5.5v5M9.75 5.5v5"
-              stroke="white"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          ) : status === "done" ? (
-            <path
-              d="m5.25 8.25 1.9 1.9 3.6-3.9"
-              fill="none"
-              stroke="white"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ) : status === "failed" ? (
-            <path
-              d="m5.75 5.75 4.5 4.5m0-4.5-4.5 4.5"
-              stroke="white"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          ) : (
-            <rect x="5.5" y="5.5" width="5" height="5" rx="1" fill="white" />
-          )}
-        </>
-      )}
-    </svg>
+    <span role="img" aria-label={label} className="flex shrink-0">
+      <StatusIndicator indicator={indicator} className={mark} />
+    </span>
   );
 }
 
