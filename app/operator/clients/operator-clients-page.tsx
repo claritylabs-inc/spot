@@ -3,8 +3,9 @@
 import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useRef, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import {
@@ -120,12 +121,16 @@ export default function OperatorClientsScreen() {
   const current = useCachedOperatorCurrent();
   const readOnly = Boolean(current?.activeImpersonation);
   const clients = useCachedOperatorClients();
-  const unlinkedApplications = useQuery(
+  const unlinkedApplications = useCachedQuery(
+    "operator.listUnlinkedApplications",
     api.operator.listUnlinkedApplications,
+    {},
   );
-  const operators = useQuery(api.operator.listOperators)?.filter(
-    (operator) => operator.status === "active",
-  );
+  const operators = useCachedQuery(
+    "operator.listOperators",
+    api.operator.listOperators,
+    {},
+  )?.filter((operator) => operator.status === "active");
   const operatorNames = new Map(
     operators?.map((operator) => [operator.userId, operator.name]),
   );

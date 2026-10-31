@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
@@ -43,6 +43,10 @@ export default function OperatorInboxPage() {
     if (selectedId) setComposing(null);
   }, [selectedId, setComposing]);
   const resolved = useResolvedThreadId(selectedId);
+  // Switching conversations keeps the open reader until the next id resolves.
+  const [readerThreadId, setReaderThreadId] = useState(resolved.threadId);
+  if (resolved.status !== "loading" && resolved.threadId !== readerThreadId)
+    setReaderThreadId(resolved.threadId);
   // A saved link with a legacy id moves to the current id.
   useEffect(() => {
     if (resolved.status === "ready" && resolved.redirected)
@@ -65,10 +69,10 @@ export default function OperatorInboxPage() {
           />
         ) : resolved.status === "unavailable" ? (
           <ConversationUnavailable onClose={close} />
-        ) : resolved.threadId ? (
-          <ReaderBoundary resetKey={resolved.threadId} onClose={close}>
+        ) : readerThreadId ? (
+          <ReaderBoundary resetKey={readerThreadId} onClose={close}>
             <ProcurementEmailDrawer
-              emailThreadId={resolved.threadId}
+              emailThreadId={readerThreadId}
               readOnly={Boolean(current?.activeImpersonation)}
               onClose={close}
             />

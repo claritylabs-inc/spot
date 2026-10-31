@@ -4,11 +4,12 @@ import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { AppShellPortal } from "@/components/app-shell-slots";
@@ -72,7 +73,7 @@ const TAB_LABELS: Record<string, string> = {
 
 export default function OperatorBrokerPage() {
   const { brokerOrgId } = useParams<{ brokerOrgId: string }>();
-  const row = useQuery(api.brokerProfiles.get, {
+  const row = useCachedQuery("brokerProfiles.get", api.brokerProfiles.get, {
     brokerOrgId: brokerOrgId as Id<"organizations">,
   });
 

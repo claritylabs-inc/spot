@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useParams, useSearchParams } from "next/navigation";
 import { Loader2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   betaFeatureFlagsForOrgType,
@@ -216,9 +217,13 @@ function OperatorClientSettingsPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
   const searchParams = useSearchParams();
   const clients = useCachedOperatorClients();
-  const supportDetails = useQuery(api.operator.getClientSupportDetails, {
-    clientOrgId: clientOrgId as Id<"organizations">,
-  });
+  const supportDetails = useCachedQuery(
+    "operator.getClientSupportDetails",
+    api.operator.getClientSupportDetails,
+    {
+      clientOrgId: clientOrgId as Id<"organizations">,
+    },
+  );
   const [workspaceActions, setWorkspaceActions] =
     useState<React.ReactNode>(null);
   const [rightPanel, setRightPanel] = useState<React.ReactNode>(null);

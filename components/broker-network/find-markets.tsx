@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import type { FunctionReturnType } from "convex/server";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import dayjs from "dayjs";
 import { Loader2, Search } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   USPS_STATE_CODES,
@@ -513,9 +514,13 @@ function SearchHistory({
 }
 
 function DiscoveryCandidates({ discovery }: { discovery: Discovery }) {
-  const data = useQuery(api.providerDiscovery.candidates, {
-    discoveryId: discovery.discoveryId,
-  });
+  const data = useCachedQuery(
+    "providerDiscovery.candidates",
+    api.providerDiscovery.candidates,
+    {
+      discoveryId: discovery.discoveryId,
+    },
+  );
   const review = useMutation(api.providerDiscovery.review);
   const [reviewing, setReviewing] = useState(false);
   const [selected, setSelected] = useFollowedState<
@@ -683,7 +688,11 @@ export function FindMarkets({
   /** From a notification link; otherwise the latest search is shown. */
   initialDiscoveryId?: string | null;
 }) {
-  const discoveries = useQuery(api.providerDiscovery.list, {});
+  const discoveries = useCachedQuery(
+    "providerDiscovery.list",
+    api.providerDiscovery.list,
+    {},
+  );
   const [selectedId, setSelectedId] = useFollowedState<string | null>(
     "brokers:markets:discovery",
     initialDiscoveryId ?? null,

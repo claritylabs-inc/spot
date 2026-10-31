@@ -6,6 +6,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { ChevronRight, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   missingSlackCustomerScopes,
@@ -493,17 +494,20 @@ export function AgentChannelsSection({
   const { setRightPanel: setSettingsRightPanel } = useSettingsActions();
   const setRightPanel = setRightPanelOverride ?? setSettingsRightPanel;
   const { patchClientSettings } = useOperatorClientCacheActions();
-  const viewer = useQuery(api.users.viewer);
+  const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const isOperator = viewer?.accountKind === "operator";
-  const customerResult = useQuery(
+  const customerResult = useCachedQuery(
+    "agentChannels.get",
     api.agentChannels.get,
     viewer && !isOperator ? { clientOrgId } : "skip",
   );
-  const operatorResult = useQuery(
+  const operatorResult = useCachedQuery(
+    "agentChannels.getForOperator",
     api.agentChannels.getForOperator,
     isOperator ? { clientOrgId } : "skip",
   );
-  const clientTeamMembers = useQuery(
+  const clientTeamMembers = useCachedQuery(
+    "orgs.listMembers",
     api.orgs.listMembers,
     isOperator ? { operatorClientOrgId: clientOrgId } : "skip",
   );

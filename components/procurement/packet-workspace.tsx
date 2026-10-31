@@ -14,7 +14,7 @@ import {
   useState,
   type Ref,
 } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   Copy,
   Download,
@@ -37,6 +37,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -50,7 +51,11 @@ export function PacketLinkDrawer({
   onClose: () => void;
   beforeRegenerate: () => Promise<boolean>;
 }) {
-  const links = useQuery(api.procurementPacket.listLinks, { requestId });
+  const links = useCachedQuery(
+    "procurementPacket.listLinks",
+    api.procurementPacket.listLinks,
+    { requestId },
+  );
   const mintLink = useMutation(api.procurementPacket.mintLink);
   const rotateLink = useMutation(api.procurementPacket.rotateLink);
   const activeLink = links?.find(
@@ -182,7 +187,11 @@ export function PacketWorkspace({
   toolbarTarget,
   ref,
 }: PacketWorkspaceProps) {
-  const packet = useQuery(api.procurementPacket.get, { requestId });
+  const packet = useCachedQuery(
+    "procurementPacket.get",
+    api.procurementPacket.get,
+    { requestId },
+  );
   if (!packet)
     return (
       <OperationalPanel className="flex h-40 items-center justify-center">

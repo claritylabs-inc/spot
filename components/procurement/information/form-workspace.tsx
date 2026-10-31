@@ -1,5 +1,5 @@
 "use client";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   informationApplicability,
   informationCoverageGroups,
@@ -7,6 +7,7 @@ import {
 import { toast } from "sonner";
 import { Mail, Link2 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { formatIntakeFollowupAnswer } from "@/lib/intake-followups";
 import { typeStyle } from "@/lib/typography";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
@@ -94,9 +95,13 @@ export function InformationFormActions(
 export function InformationFormWorkspace(
   props: Actions & { selectedForm: string },
 ) {
-  const panel = useQuery(api.procurementInformation.panel, {
-    requestId: props.requestId,
-  });
+  const panel = useCachedQuery(
+    "procurementInformation.panel",
+    api.procurementInformation.panel,
+    {
+      requestId: props.requestId,
+    },
+  );
   const { suggestions } = useInformationSuggestions(
     props.requestId,
     props.readOnly,

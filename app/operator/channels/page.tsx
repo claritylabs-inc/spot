@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { Check, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { AppShell } from "@/components/app-shell";
 import {
   OperatorPageContextRegistration,
@@ -179,7 +180,11 @@ function McpSetupCard({ title, snippet }: { title: string; snippet: string }) {
 }
 
 function OperatorMcpContent() {
-  const status = useQuery(api.agentChannels.getOperatorMcpStatus, {});
+  const status = useCachedQuery(
+    "agentChannels.getOperatorMcpStatus",
+    api.agentChannels.getOperatorMcpStatus,
+    {},
+  );
 
   if (status === undefined) {
     return (
@@ -324,8 +329,13 @@ function OperatorChannelsContent({
   operatorEmail: string;
   profile: OperatorSlackProfile;
 }) {
-  const hostStatus = useQuery(api.agentChannels.getSlackHostStatus, {});
-  const operatorIdentities = useQuery(
+  const hostStatus = useCachedQuery(
+    "agentChannels.getSlackHostStatus",
+    api.agentChannels.getSlackHostStatus,
+    {},
+  );
+  const operatorIdentities = useCachedQuery(
+    "agentChannels.listOperatorSlackIdentities",
     api.agentChannels.listOperatorSlackIdentities,
     {},
   );

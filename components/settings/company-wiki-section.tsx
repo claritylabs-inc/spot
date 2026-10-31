@@ -6,7 +6,7 @@ import { IntakeCompanyReview } from "@/components/insurance-intake/company-revie
 import { splitEditorMarkdown, replaceEditorBody } from "@/lib/markdown-editor";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { Download, Loader2, FileInput } from "lucide-react";
 import { toast } from "sonner";
 import { ProseMarkdown } from "@/components/prose-markdown";
@@ -20,6 +20,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   MAX_MARKDOWN_BYTES,
@@ -311,15 +312,18 @@ export function CompanyWikiSection({
     useState<HTMLDivElement | null>(null);
   const currentOrg = useCurrentOrg();
   const orgId = clientOrgId ?? currentOrg?.orgId;
-  const tenantWiki = useQuery(
+  const tenantWiki = useCachedQuery(
+    "orgWiki.get",
     api.orgWiki.get,
     orgId && !operator ? { orgId } : "skip",
   );
-  const tenantBusinessProfile = useQuery(
+  const tenantBusinessProfile = useCachedQuery(
+    "orgWiki.businessProfile",
     api.orgWiki.businessProfile,
     orgId && !operator ? { orgId } : "skip",
   );
-  const operatorWiki = useQuery(
+  const operatorWiki = useCachedQuery(
+    "orgWiki.getForOperator",
     api.orgWiki.getForOperator,
     orgId && operator ? { orgId } : "skip",
   );

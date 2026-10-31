@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { useQuery } from "convex/react";
+import {
+  usePaginatedQuery,
+  useQuery,
+  type PaginatedQueryArgs,
+  type PaginatedQueryItem,
+  type PaginatedQueryReference,
+  type UsePaginatedQueryReturnType,
+} from "convex/react";
 import { type FunctionReference } from "convex/server";
 import { type FunctionArgs, type FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
@@ -115,6 +122,45 @@ export function useCachedQuery<TQuery extends FunctionReference<"query">>(
   }, [argsKey, cacheName, collection, isSkipped, serverValue, store]);
 
   return serverValue === undefined ? cached : serverValue;
+}
+
+/**
+ * `usePaginatedQuery` that shows the last-seen first page while the live first
+ * page loads, so revisits and filter switches don't flash an empty list.
+ */
+export function useCachedPaginatedQuery<
+  TQuery extends PaginatedQueryReference,
+>(
+  cacheName: string,
+  query: TQuery,
+  args: PaginatedQueryArgs<TQuery> | "skip",
+  options: { initialNumItems: number },
+): UsePaginatedQueryReturnType<TQuery> {
+  const store = useSyncStore();
+  const collection =
+    collectionFor<PaginatedQueryItem<TQuery>[]>(`paginated.${cacheName}`);
+  const isSkipped = args === "skip";
+  const argsKey = isSkipped ? "skip" : stableHash(args);
+  const cached = useSyncCollection(collection, argsKey)?.[0]?.value;
+  const { initialNumItems } = options;
+  const live = usePaginatedQuery(query, args, { initialNumItems });
+  const loaded = live.status !== "LoadingFirstPage";
+  const { results } = live;
+
+  useEffect(() => {
+    if (isSkipped || !loaded) return;
+    if (store.key.includes(":anonymous:")) return;
+    const firstPage = results.slice(0, initialNumItems);
+    const current = store.getCollection(collection, argsKey)?.[0]?.value;
+    if (current !== undefined && stableHash(current) === stableHash(firstPage))
+      return;
+    void store.upsertCollection(collection, argsKey, [
+      cachedQueryResult(argsKey, firstPage),
+    ]);
+  }, [argsKey, collection, initialNumItems, isSkipped, loaded, results, store]);
+
+  if (loaded || cached === undefined) return live;
+  return { ...live, results: cached, status: "LoadingMore", isLoading: true };
 }
 
 export function useUpdateCachedQuery<TValue, TArgs>(

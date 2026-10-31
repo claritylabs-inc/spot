@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import {
   GOOGLE_WORKSPACE_LIMITS,
   type OperatorGoogleWorkspaceMailboxMode,
@@ -219,7 +220,11 @@ export function OperatorGoogleWorkspaceContent({
 }: {
   onConfigure: () => void;
 }) {
-  const status = useQuery(api.operatorGoogleWorkspace.getStatus, {});
+  const status = useCachedQuery(
+    "operatorGoogleWorkspace.getStatus",
+    api.operatorGoogleWorkspace.getStatus,
+    {},
+  );
   const verifyConnection = useAction(
     api.actions.operatorGoogleWorkspace.verifyConnection,
   );

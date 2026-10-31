@@ -50,6 +50,7 @@ import {
   StatusTag,
 } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useReportEmailThreadPresence } from "@/hooks/use-operator-presence";
 import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
@@ -934,7 +935,7 @@ export function ProcurementEmailDrawer({
   readOnly: boolean;
   onClose: () => void;
 }) {
-  const result = useQuery(api.teamInbox.getThread, {
+  const result = useCachedQuery("teamInbox.getThread", api.teamInbox.getThread, {
     threadId: emailThreadId,
     ...(requestId ? { requestId } : {}),
     ...(requestId && includeArchived ? { includeArchived: true } : {}),

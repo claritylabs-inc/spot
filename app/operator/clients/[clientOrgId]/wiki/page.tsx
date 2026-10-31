@@ -6,11 +6,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Loader2, StickyNote } from "lucide-react";
 
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useSharedDoc } from "@/lib/collab/doc";
 import { api } from "@/convex/_generated/api";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
@@ -56,10 +57,18 @@ function ProfileContent({
   client: OperatorClientRow;
   readOnly: boolean;
 }) {
-  const wiki = useQuery(api.orgWiki.getForOperator, { orgId: client._id });
-  const support = useQuery(api.operator.getClientSupportDetails, {
-    clientOrgId: client._id,
-  });
+  const wiki = useCachedQuery(
+    "orgWiki.getForOperator",
+    api.orgWiki.getForOperator,
+    { orgId: client._id },
+  );
+  const support = useCachedQuery(
+    "operator.getClientSupportDetails",
+    api.operator.getClientSupportDetails,
+    {
+      clientOrgId: client._id,
+    },
+  );
   return wiki && support ? (
     <LoadedProfile
       key={client._id}
