@@ -1,10 +1,8 @@
 /**
  * Procurement-family guidance moved out of individual tool descriptions so it is
  * paid for once per turn that selects the family instead of once per tool in
- * every turn's catalog. Not yet wired: `OPERATOR_TOOL_FAMILY_CATALOG` sets
- * `guidance` only for `outbound_email`; wiring `PROCUREMENT_FAMILY_GUIDANCE`
- * into the `procurement` family is a shared change (see the W10 handoff).
- * Each tool description still states on its own that sends are externally
+ * every turn's catalog; `OPERATOR_TOOL_FAMILY_CATALOG` attaches it to the
+ * `procurement` family. Each tool description still states on its own that sends are externally
  * visible and need exact approval.
  */
 

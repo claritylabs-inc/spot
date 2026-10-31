@@ -512,7 +512,7 @@ export async function getTeamThreadDetails(
     addressedRequest && !addressedRequest.deletedAt && addressedRequest.clientOrgId === thread.clientOrgId
       ? addressedRequest
       : null;
-  const forwardingAddress = liveAddressed ? requestForwardingAddressOf(liveAddressed) : null;
+  const legacyForwardingAddress = liveAddressed ? requestForwardingAddressOf(liveAddressed) : null;
   return {
     thread,
     request: request
@@ -525,7 +525,7 @@ export async function getTeamThreadDetails(
         }
       : null,
     addressedRequest: liveAddressed
-      ? { requestId: liveAddressed._id, title: liveAddressed.title, forwardingAddress }
+      ? { requestId: liveAddressed._id, title: liveAddressed.title, legacyForwardingAddress }
       : null,
     client: client ? { _id: client._id, name: client.name } : null,
     messages: hydrated,

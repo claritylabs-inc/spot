@@ -217,7 +217,7 @@ const procurementFileItemId = z
 const procurementEmailThreadId = z
   .string()
   .min(1)
-  .describe("Exact procurement email thread ID");
+  .describe("Exact team email thread ID (the same ID get_team_inbox_thread uses)");
 const teamEmailThreadId = z.string().min(1).describe("Exact shared team email thread ID");
 const procurementProposalId = z
   .string()
@@ -1549,7 +1549,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 2,
     description:
-      "Page compact procurement requests (insurance applications and intake submissions, up to 100 per page) across clients, or scope by orgId. Filter by statuses, client assignee and updated dates. Follow nextCursor with unchanged filters even on empty pages; bounded means coverage is incomplete. With an exact request ID use get_procurement_request instead, including include application for answers. To find a request from an email, use search_team_inbox: each thread shows its linked request. Summary omits child counts; view full restores legacy rows, capped at 10 per page.",
+      "Page compact procurement requests (insurance applications and intake submissions, up to 100 per page) across clients, or scope by orgId. Filter by statuses, client assignee and updated dates. Follow nextCursor with unchanged filters even on empty pages; bounded means coverage is incomplete. With an exact request ID use get_procurement_request instead, including include application for answers. To find a request from an email, use search_team_inbox: each thread shows its linked request. Summary omits child counts; view full returns complete rows, capped at 10 per page.",
     inputSchema: z.object({
       orgId: omittable(organizationId),
       query: omittable(
@@ -1609,7 +1609,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 3,
     description:
-      "Read one request's identity, status, revision and accepted application summary. Opt into application answers, files, emailThreads, outreach, proposals, timeline or audit; only include files returns signed file URLs. Unlinked intake remains diagnostic-only; draft answers are not submissions. view full restores legacy detail fields; file URLs still require include files. Proposal data is operator-private. To find a request without its exact ID use list_procurement_requests, or search_team_inbox when you start from an email.",
+      "Read one request's identity, status, revision and accepted application summary. Opt into application answers, files, emailThreads, outreach, proposals, timeline or audit; only include files returns signed file URLs. Unlinked intake remains diagnostic-only; draft answers are not submissions. view full returns every detail field; file URLs still require include files. Proposal data is operator-private. To find a request without its exact ID use list_procurement_requests, or search_team_inbox when you start from an email.",
     inputSchema: z.object({
       procurementRequestId,
       include: omittable(
@@ -1765,7 +1765,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "List imported forwarding-email threads for one exact procurement request, including recipient-based category, original addressed request, current request, participants, and message counts. Returns at most 100 threads with bounded metadata and no cursor. Report incomplete coverage when bounded.",
+      "List team email threads linked to one exact procurement request, including recipient-based category, original addressed request, current request, participants, and message counts. Returns at most 100 threads with bounded metadata and no cursor. Report incomplete coverage when bounded.",
     inputSchema: z.object({
       procurementRequestId,
       limit: omittable(z.number().int().min(1).max(100)),
@@ -1785,7 +1785,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 2,
     description:
-      "Read imported procurement email threads: bodies, envelope and forwarded participants, recipient category, original request address, client-file attachments. One procurementEmailThreadId returns the full thread; procurementEmailThreadIds (up to 50) returns {items, notFound} in a compact view (newest messages with trimmed bodies, shorter for larger batches; no file URLs). view overrides.",
+      "Read team email threads by exact ID (the same records as get_team_inbox_thread, with procurement fields): bodies, envelope and forwarded participants, recipient category, the request the mail was originally addressed to, client-file attachments. One procurementEmailThreadId returns the full thread; procurementEmailThreadIds (up to 50) returns {items, notFound} in a compact view (newest messages with trimmed bodies, shorter for larger batches; no file URLs). view overrides.",
     inputSchema: z
       .object({
         procurementEmailThreadId: omittable(procurementEmailThreadId),
@@ -1940,7 +1940,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Preview how one imported procurement email thread maps to its request, canonical attachments, and provider outreach contacts. Returns only an exact filing next action when one contact match is unambiguous; it never files a proposal by itself.",
+      "Preview how one team email thread linked to a request maps to that request, canonical attachments, and provider outreach contacts. Returns only an exact filing next action when one contact match is unambiguous; it never files a proposal by itself.",
     inputSchema: z.object({ procurementEmailThreadId }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -2585,7 +2585,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     // Invalidates pending confirmations created against the retired fields.
     version: 6,
     description:
-      "Create a new-policy procurement request for an exact client, with its forwarding address and initial shared packet link. The narrative is the client's own words and initializes public.md, or private.md when its front matter sets visibility: private. Resolve exact policy IDs with a policy read before linking one; unknown or foreign policy IDs are rejected before approval.",
+      "Create a new-policy procurement request for an exact client, with its initial shared packet link. To bring in correspondence, forward it to your team address from get_procurement_forwarding_address. The narrative is the client's own words and initializes public.md, or private.md when its front matter sets visibility: private. Resolve exact policy IDs with a policy read before linking one; unknown or foreign policy IDs are rejected before approval.",
     inputSchema: z.object({
       orgId: organizationId,
       title: z.string().min(1).max(200),
@@ -2676,7 +2676,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 2,
     description:
-      "Atomically file a provider quote from exact client files, request files, conversation attachments, or procurementEmailThreadId. Email source preserves provenance; omit clientFileIds to file all active email attachments. Reuses the active outreach proposal, deduplicates content and queues extraction under exact approval.",
+      "Atomically file a provider quote from exact client files, request files, conversation attachments, or a team email thread (procurementEmailThreadId). Email source preserves provenance; omit clientFileIds to file all active email attachments. Reuses the active outreach proposal, deduplicates content and queues extraction under exact approval.",
     inputSchema: z
       .object({
         procurementRequestId: omittable(procurementRequestId),
@@ -2724,7 +2724,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Atomically file the active canonical attachments from one imported procurement email thread as the quote for an exact outreach, optionally narrowed to chosen attachments. The command preserves email provenance, deduplicates artifacts, queues extraction, and converges on replay.",
+      "Atomically file the active canonical attachments from one team email thread linked to a request as the quote for an exact outreach, optionally narrowed to chosen attachments. The command preserves email provenance, deduplicates artifacts, queues extraction, and converges on replay.",
     inputSchema: z.object({
       procurementEmailThreadId,
       procurementOutreachId,
@@ -3538,7 +3538,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     version: 1,
     offered: false,
     description:
-      "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. For multiple items use update_procurement_email_threads.",
+      "Correct email categories or move linked team conversations to another request of the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. For multiple items use update_procurement_email_threads.",
     inputSchema: updateProcurementEmailThreadInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -3559,7 +3559,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Correct email categories or move linked team conversations to another request of the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
     inputSchema: z.object({
       items: z.array(updateProcurementEmailThreadInputSchema).min(1).max(50),
     }),
