@@ -61,6 +61,10 @@ export function resolveOperatorToolDispatch(
         default:
           throw new Error("Unknown extraction action");
       }
+    case "research_client":
+      if (Array.isArray(input.orgIds))
+        return { toolName: "research_client_profiles", input };
+      break;
     case "file_procurement_proposal":
       if (input.procurementEmailThreadId)
         return { toolName: "file_procurement_email_quote", input };

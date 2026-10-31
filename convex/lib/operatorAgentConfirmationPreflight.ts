@@ -11,6 +11,7 @@ import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { currentMonitor } from "../clientWebMonitors";
+import { assertClientWebMonitorFrequency } from "./clientWebMonitors";
 import {
   prepareProviderDiscovery,
   reviewableCandidates,
@@ -1322,6 +1323,14 @@ export async function preflightOperatorToolConfirmation(
       return;
     case "manage_client_web_monitor": {
       const organization = await requireClientOrganization(ctx, args.input.orgId);
+      if (typeof args.input.frequency === "string") {
+        if (args.input.action === "cancel")
+          throw new NoWriteInputError(
+            "invalid_frequency",
+            "frequency applies only to action create; omit it to cancel.",
+          );
+        assertClientWebMonitorFrequency(args.input.frequency);
+      }
       const monitor = await currentMonitor(ctx, organization._id);
       if (args.input.action === "create" && monitor)
         throw new NoWriteInputError(

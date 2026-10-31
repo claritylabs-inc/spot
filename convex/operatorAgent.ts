@@ -74,7 +74,8 @@ import { acknowledgeClientWebMonitorEvents } from "./clientWebMonitors";
 import {
   providerCandidateReviewSummary,
   providerDiscoveryApprovalSummary,
-  readProviderCandidates,
+  readProviderCandidateEvidence,
+  readProviderCandidateSummaries,
   recentProviderDiscoveries,
   reviewProviderCandidatesByOperator,
 } from "./providerDiscovery";
@@ -82,10 +83,12 @@ import { clientRecipientOptions } from "./lib/clientOutreach";
 import { appendWikiSection } from "./lib/wikiAppend";
 import {
   companyResearchStatus,
+  informationResearchStatus,
   techStackResearchStatus,
   type ResearchStatus,
 } from "./lib/researchStatus";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
+import { latestResearchRuns } from "./lib/procurementInformationResearch";
 import {
   getClientAttention,
   getOperatorProcurementRequest,
@@ -712,13 +715,10 @@ async function operatorConfirmationSummary(
       OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(input),
     );
   }
-  if (toolName === "research_client_profiles") {
-    return clientProfileResearchSummary(
-      ctx,
-      OPERATOR_AGENT_TOOL_REGISTRY.research_client_profiles.inputSchema.parse(
-        input,
-      ).orgIds,
-    );
+  if (toolName === "research_client_profiles" || toolName === "research_client") {
+    const { orgIds } =
+      OPERATOR_AGENT_TOOL_REGISTRY[toolName].inputSchema.parse(input);
+    if (orgIds) return clientProfileResearchSummary(ctx, orgIds);
   }
   if (toolName === "review_procurement_information_suggestions") {
     return informationSuggestionReviewSummary(
@@ -4236,19 +4236,21 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
 
   if (toolName === "list_provider_candidates") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.list_provider_candidates.inputSchema.parse(input);
+    if (parsed.candidateIds)
+      return await readProviderCandidateEvidence(ctx, parsed.candidateIds, 240);
     const discoveryId = parsed.discoveryId
       ? ctx.db.normalizeId("providerDiscoveries", parsed.discoveryId)
       : undefined;
     if (discoveryId === null)
       throw new NoWriteInputError(
         "invalid_identifier",
-        "Invalid provider discovery ID. Use discoveryId values from list_provider_candidates.",
+        "Invalid provider discovery ID. Use discoveryId values from list_provider_discoveries.",
       );
-    return await readProviderCandidates(ctx, {
+    return await readProviderCandidateSummaries(ctx, {
       discoveryId,
       status: parsed.status,
-      limit: parsed.limit ?? 10,
-      excerptChars: 240,
+      limit: parsed.limit ?? 25,
+      offset: parsed.offset ?? 0,
     });
   }
 
@@ -4496,6 +4498,7 @@ export const researchStatusInternal = internalQuery({
     operatorUserId: v.id("users"),
     orgId: v.optional(v.string()),
     website: v.optional(v.string()),
+    procurementRequestId: v.optional(v.string()),
     kind: v.union(
       v.literal("company"),
       v.literal("tech_stack"),
@@ -4504,6 +4507,25 @@ export const researchStatusInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
+    if (args.procurementRequestId) {
+      const requestId = normalizeProcurementRequestId(
+        ctx,
+        args.procurementRequestId,
+      );
+      const request = await ctx.db.get(requestId);
+      if (!request || request.deletedAt !== undefined)
+        throw new NoWriteInputError(
+          "target_not_found",
+          "Procurement request not found",
+        );
+      const [latest] = await latestResearchRuns(ctx, requestId);
+      const status = informationResearchStatus(latest);
+      return {
+        procurementRequestId: requestId,
+        research: [status],
+        settled: status.settled,
+      };
+    }
     // A prospect has no organization, only a scanned website.
     if (!args.orgId) {
       const techStack = await techStackResearchStatus(ctx, args.website);
@@ -4675,6 +4697,7 @@ async function executeToolActionDomain(
         operatorUserId: args.operatorUserId,
         orgId: parsed.orgId,
         website: parsed.website,
+        procurementRequestId: parsed.procurementRequestId,
         kind: parsed.kind ?? "all",
       });
       const now = dayjs().valueOf();

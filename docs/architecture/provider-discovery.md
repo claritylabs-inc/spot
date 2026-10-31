@@ -103,7 +103,10 @@ callback may still carry its client's `orgId`.
   dates (tool: 1–25, default 10; UI query: up to 50, default 20).
 - `list_provider_candidates` / `providerDiscovery.candidates`: one
   discovery's status and candidates in the router's order (tool: optional
-  `discoveryId`, default the latest discovery; optional `status`; 1–25,
+  `discoveryId`, default the latest discovery; optional `status`; compact rows
+  without citations, 1–25 with `offset`/`nextOffset`, because a full-evidence
+  row is about 7 KB and would overrun the 24 KB model-facing result bound
+  after four candidates; up to three `candidateIds` read cited evidence with
   excerpts trimmed to 240 characters; UI query: every candidate, full stored
   excerpts).
 - `review_provider_candidates` / `providerDiscovery.review`: 1–50 distinct
@@ -136,7 +139,19 @@ operators add or dismiss them one at a time or in bulk (up to 50, one atomic
 `review` call). Rows already in the network show "In network", linking to the
 provider profile. The request workspace has no discovery surface.
 
+Everything on the tab is live for every operator on the page: the history and
+candidates are reactive queries, and the form fields, confirm dialog, selected
+search and selected candidates are followed state (`brokers:markets:*`), so a
+follower sees the leader's. While the tab is open it layers an
+`operator_broker_markets` page context (entityId the open search) over the
+page's, so the AI panel's first step already holds that search's compact
+candidates and the newest searches (`convex/lib/pageContext/operator.ts`).
+
 The Clients list adds a bulk "Research public profiles" action (1–50
 clients) backed by `clientProfileBatchResearch.start`, which authorizes like
 other operator client writes and queues through
-`queueClientProfileBatchResearch`.
+`queueClientProfileBatchResearch`. Its confirmation is followed state
+(`clients:list:profile-research`) over the already followed selection, and
+every client row shows a spinner while its company research is queued or
+running (`listClients` `researching`), so teammates watch the batch progress
+without a toast.

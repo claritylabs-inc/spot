@@ -428,6 +428,20 @@ export default function OperatorClientsScreen() {
                             >
                               {client.dba ?? client.name}
                             </TableNameLink>
+                            {client.researching ? (
+                              <span
+                                className="shrink-0"
+                                title="Researching public sources"
+                              >
+                                <Loader2
+                                  aria-hidden
+                                  className="size-3.5 animate-spin text-muted-foreground"
+                                />
+                                <span className="sr-only">
+                                  Researching public sources
+                                </span>
+                              </span>
+                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell className="max-w-56 truncate text-muted-foreground">
