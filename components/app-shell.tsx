@@ -356,10 +356,12 @@ function ShellFrame({
                   onToggleCollapse={sidebarPreference.toggleCollapse}
                 />
               }
-              // The saved state; tablet widths only compact the content.
-              collapsed={sidebarPreference.preference.collapsed}
+              // Tablet widths force the rail without touching the saved state.
+              collapsed={sidebarCollapsed}
               defaultWidth={sidebarPreference.preference.width}
-              onCollapsedChange={sidebarPreference.setCollapsed}
+              onCollapsedChange={(next) => {
+                if (!appIsTablet) sidebarPreference.setCollapsed(next);
+              }}
               onWidthChange={sidebarPreference.setWidth}
             >
               {panelLayout}
